@@ -1,0 +1,604 @@
+// ============================================================================
+// BIM CREATIVE HUB — Relational Database Schema (PostgreSQL + Prisma ORM)
+// Covers all 30 core relational entities required by the Master Specification
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  username          String             @unique
+  passwordHash      String
+  fullName          String
+  employeeId        String?
+  jobTitle          String?
+  phone             String?
+  avatarUrl         String?
+  branchId          String?
+  branch            Branch?            @relation(fields: [branchId], references: [id])
+  isActive          Boolean            @default(true)
+  themePreference   String             @default("system") // light | dark | system
+  aiQuotaLimit      Int                @default(100)
+  aiQuotaUsed       Int                @default(0)
+  lastLoginAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+
+  userRoles         UserRole[]
+  assignedContents  ContentItem[]      @relation("ContentPIC")
+  procurementReqs   ProcurementRequest[] @relation("ProcurementRequester")
+  designOrdersOwn   DesignOrder[]      @relation("OrderRequester")
+  designOrdersAssg  DesignOrder[]      @relation("OrderDesigner")
+  assignedTasks     Task[]             @relation("TaskAssignee")
+  createdTasks      Task[]             @relation("TaskCreator")
+  approvals         Approval[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  aiConversations   AIConversation[]
+  knowledgeDocs     KnowledgeDocument[]
+  mediaAssets       MediaAsset[]
+  imageGenerations  ImageGeneration[]
+
+  @@index([email])
+  @@index([branchId])
+}
+
+model Role {
+  id              String           @id @default(cuid())
+  code            String           @unique // MASTER | USER | GUEST
+  name            String
+  description     String?
+  isSystem        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  module          String           // dashboard | calendar | analytics | live | procurement | ads | ai_studio | knowledge | design_order | tasks | media | master_settings
+  action          String           // view | create | edit | approve | delete | export
+  description     String?
+
+  rolePermissions RolePermission[]
+
+  @@unique([module, action])
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  assignedAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  granted      Boolean    @default(true)
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+model Branch {
+  id                  String               @id @default(cuid())
+  code                String               @unique
+  name                String
+  city                String
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+
+  users               User[]
+  socialAccounts      SocialAccount[]
+  contentItems        ContentItem[]
+  campaigns           Campaign[]
+  procurementRequests ProcurementRequest[]
+  adReports           AdReport[]
+  designOrders        DesignOrder[]
+}
+
+model SocialAccount {
+  id                String              @id @default(cuid())
+  platform          String              // Instagram | TikTok | Facebook | YouTube | LinkedIn | X
+  handle            String
+  accountName       String
+  branchId          String?
+  branch            Branch?             @relation(fields: [branchId], references: [id])
+  apiConnected      Boolean             @default(false)
+  createdAt         DateTime            @default(now())
+
+  contentItems      ContentItem[]
+  analyticsSnapshots AnalyticsSnapshot[]
+  liveSchedules     LiveSchedule[]
+}
+
+model Campaign {
+  id           String        @id @default(cuid())
+  code         String        @unique
+  name         String
+  branchId     String?
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  objective    String
+  startDate    DateTime
+  endDate      DateTime
+  budget       Decimal       @default(0)
+  status       String        @default("Aktif")
+  createdAt    DateTime      @default(now())
+
+  contentItems ContentItem[]
+  adCampaigns  AdCampaign[]
+}
+
+model ContentItem {
+  id               String         @id @default(cuid())
+  contentCode      String         @unique // e.g., CNT-202610-001
+  title            String
+  publishDate      DateTime
+  publishTime      String
+  platform         String
+  socialAccountId  String?
+  socialAccount    SocialAccount? @relation(fields: [socialAccountId], references: [id])
+  branchId         String?
+  branch           Branch?        @relation(fields: [branchId], references: [id])
+  campaignId       String?
+  campaign         Campaign?      @relation(fields: [campaignId], references: [id])
+  pillar           String
+  nicheAudience    String?
+  format           String         // Reels | TikTok Video | Feed | Carousel | Story | Live | Shorts
+  objective        String         // awareness | engagement | edukasi | leads | conversion | branding
+  hook             String?
+  caption          String?
+  scriptVo         String?
+  cta              String?
+  hashtags         String?
+  visualRef        String?
+  aiPromptUsed     String?
+  picUserId        String?
+  picUser          User?          @relation("ContentPIC", fields: [picUserId], references: [id])
+  productionStatus String         @default("Ide") // Ide | Brief | Draft | Produksi | Review | Revisi | Disetujui | Terjadwal | Dipublikasikan | Dibatalkan
+  approvalStatus   String         @default("Menunggu")
+  publishUrl       String?
+  evaluationNotes  String?
+  isDemo           Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  assets           ContentAsset[]
+
+  @@index([publishDate, platform])
+  @@index([productionStatus])
+}
+
+model ContentAsset {
+  id            String      @id @default(cuid())
+  contentItemId String
+  mediaAssetId  String
+  role          String      @default("primary") // primary | reference | thumbnail
+
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  mediaAsset    MediaAsset  @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+}
+
+model AnalyticsSnapshot {
+  id                 String        @id @default(cuid())
+  socialAccountId    String
+  socialAccount      SocialAccount @relation(fields: [socialAccountId], references: [id])
+  periodType         String        // Harian | Mingguan | Bulanan | Tahunan
+  periodLabel        String
+  periodStart        DateTime
+  periodEnd          DateTime
+  followersStart     Int
+  followersEnd       Int
+  reach              Int
+  impressions        Int
+  engagement         Int
+  likes              Int
+  comments           Int
+  shares             Int
+  saves              Int?
+  profileVisits      Int?
+  linkClicks         Int?
+  leadsConversions   Int?
+  bestContentTitle   String?
+  lowestContentTitle String?
+  postFrequency      Int           @default(0)
+  dataSource         String        @default("Manual Input") // Manual Input | CSV Import | API Sync
+  isDemo             Boolean       @default(false)
+  updatedAt          DateTime      @updatedAt
+  createdAt          DateTime      @default(now())
+
+  @@index([socialAccountId, periodStart])
+}
+
+model LiveSchedule {
+  id                String      @id @default(cuid())
+  liveCode          String      @unique // LIVE-202610-001
+  title             String
+  platform          String
+  socialAccountId   String?
+  socialAccount     SocialAccount? @relation(fields: [socialAccountId], references: [id])
+  liveDate          DateTime
+  startTime         String
+  endTime           String
+  hostName          String
+  moderatorName     String?
+  mainTopic         String
+  productService    String
+  targetAudience    String?
+  objective         String
+  targetDurationMin Int         @default(60)
+  outline           String?
+  openingScript     String?
+  talkingPoints     String?
+  cta               String?
+  equipmentProps    String?
+  prepStatus        String      @default("Draft")
+  liveUrl           String?
+  postLiveNotes     String?
+  isDemo            Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  liveReport        LiveReport?
+
+  @@index([liveDate, hostName])
+}
+
+model LiveReport {
+  id                String       @id @default(cuid())
+  liveScheduleId    String       @unique
+  liveSchedule      LiveSchedule @relation(fields: [liveScheduleId], references: [id], onDelete: Cascade)
+  targetPeakViewers Int          @default(0)
+  actualPeakViewers Int          @default(0)
+  targetTotalViews  Int          @default(0)
+  actualTotalViews  Int          @default(0)
+  targetLeads       Int          @default(0)
+  actualLeads       Int          @default(0)
+  actualDurationMin Int          @default(0)
+  evaluationSummary String?
+  recordedAt        DateTime     @default(now())
+}
+
+model ProcurementRequest {
+  id                String            @id @default(cuid())
+  requestNumber     String            @unique // PRC-202610-001
+  requesterId       String
+  requester         User              @relation("ProcurementRequester", fields: [requesterId], references: [id])
+  branchId          String?
+  branch            Branch?           @relation(fields: [branchId], references: [id])
+  purpose           String
+  urgency           String            @default("Normal") // Rendah | Normal | Tinggi | Kritis
+  neededDate        DateTime
+  vendorRef         String?
+  status            String            @default("Draft") // Draft | Diajukan | Menunggu Persetujuan | Disetujui | Ditolak | Proses Pembelian | Barang Diterima | Selesai
+  rejectionReason   String?
+  estimatedTotal    Decimal           @default(0)
+  actualTotal       Decimal?
+  quotationFileUrl  String?
+  receiptFileUrl    String?
+  notes             String?
+  isDemo            Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
+
+  items             ProcurementItem[]
+}
+
+model ProcurementItem {
+  id                   String             @id @default(cuid())
+  procurementRequestId String
+  procurementRequest   ProcurementRequest @relation(fields: [procurementRequestId], references: [id], onDelete: Cascade)
+  itemName             String
+  category             String
+  specification        String?
+  quantity             Int
+  unit                 String
+  estimatedUnitPrice   Decimal
+  actualUnitPrice      Decimal?
+}
+
+model AdCampaign {
+  id           String     @id @default(cuid())
+  campaignId   String?
+  campaign     Campaign?  @relation(fields: [campaignId], references: [id])
+  platform     String     // Meta Ads | TikTok Ads | Google Ads
+  name         String
+  objective    String
+  plannedBudget Decimal   @default(0)
+  createdAt    DateTime   @default(now())
+
+  adReports    AdReport[]
+}
+
+model AdReport {
+  id                   String      @id @default(cuid())
+  reportCode           String      @unique // ADS-202610-001
+  adCampaignId         String?
+  adCampaign           AdCampaign? @relation(fields: [adCampaignId], references: [id])
+  platform             String
+  campaignName         String
+  adSetName            String
+  creativeName         String
+  objective            String
+  startDate            DateTime
+  endDate              DateTime
+  branchId             String?
+  branch               Branch?     @relation(fields: [branchId], references: [id])
+  productService       String
+  plannedBudget        Decimal
+  actualSpend          Decimal
+  impressions          Int
+  reach                Int
+  clicks               Int
+  linkClicks           Int
+  conversationsLeads   Int         @default(0)
+  purchasesConversions Int?
+  revenue              Decimal?
+  screenshotUrl        String?
+  notesRecommendations String?
+  isDemo               Boolean     @default(false)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+}
+
+model AIConversation {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  brandContext String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  messages     AIChatMessage[]
+}
+
+model AIChatMessage {
+  id               String         @id @default(cuid())
+  conversationId   String
+  conversation     AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role             String         // user | assistant | system
+  content          String
+  citedDocIds      String?        // JSON array of KnowledgeDocument IDs
+  tokensUsed       Int            @default(0)
+  createdAt        DateTime       @default(now())
+}
+
+model KnowledgeDocument {
+  id            String           @id @default(cuid())
+  docCode       String           @unique
+  title         String
+  category      String           // Brand Guideline | Katalog Produk | SOP | Profil Perusahaan | Cabang | Caption/Script | Kampanye | FAQ
+  description   String?
+  tags          String?
+  fileFormat    String           // PDF | DOCX | TXT | CSV | XLSX | PPTX
+  ownerId       String
+  owner         User             @relation(fields: [ownerId], references: [id])
+  version       String           @default("1.0")
+  status        String           @default("Aktif") // Aktif | Arsip
+  accessLevel   String           @default("Internal Tim") // Global Perusahaan | Internal Tim | Khusus Master | Pribadi
+  aiEnabled     Boolean          @default(true)
+  rawContent    String
+  isDemo        Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
+
+  chunks        KnowledgeChunk[]
+}
+
+model KnowledgeChunk {
+  id          String            @id @default(cuid())
+  documentId  String
+  document    KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex  Int
+  content     String
+  tokenCount  Int
+  embedding   String?           // Vector representation / keywords
+}
+
+model ImageGeneration {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  prompt          String
+  negativePrompt  String?
+  purpose         String?
+  style           String?
+  aspectRatio     String   @default("1:1")
+  targetRes       String   @default("1024x1024")
+  qualityMode     String   @default("High Quality")
+  providerUsed    String
+  imageUrl        String
+  parentGenId     String?
+  createdAt       DateTime @default(now())
+}
+
+model MediaAsset {
+  id            String         @id @default(cuid())
+  assetCode     String         @unique
+  title         String
+  folder        String         // Hasil AI | Foto Referensi | Logo | Template | Materi Konten | Draft Desain | Desain Final | Materi Kampanye
+  fileType      String         // image/png | image/jpeg | application/pdf | video/mp4
+  fileSizeKb    Int
+  storageKey    String         // S3 Object Key or Data URI in local sandbox
+  tags          String?
+  ownerId       String
+  owner         User           @relation(fields: [ownerId], references: [id])
+  accessLevel   String         @default("Internal Tim")
+  usageHistory  String?        // JSON array of linked ContentItem / DesignOrder codes
+  isDemo        Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  deletedAt     DateTime?
+
+  contentAssets ContentAsset[]
+}
+
+model DesignOrder {
+  id                 String                  @id @default(cuid())
+  orderNumber        String                  @unique // IDC-20261020-001 or BNR-20261020-001
+  orderType          String                  // ID_CARD | BANNER
+  requesterId        String
+  requester          User                    @relation("OrderRequester", fields: [requesterId], references: [id])
+  assignedDesignerId String?
+  assignedDesigner   User?                   @relation("OrderDesigner", fields: [assignedDesignerId], references: [id])
+  branchId           String?
+  branch             Branch?                 @relation(fields: [branchId], references: [id])
+  fullName           String                  // Nama Lengkap (Mandatory for ID Card)
+  phone              String                  // Nomor Telepon Tervalidasi (Mandatory for ID Card)
+  jobTitle           String                  // Jabatan (Mandatory for ID Card)
+  priority           String                  @default("Normal")
+  status             String                  @default("Menunggu") // Menunggu | Dikerjakan | Selesai
+  completedAt        DateTime?               // Waktu penyelesaian saat "Desain sudah terkirim" ditekan
+  completedById      String?                 // ID pengguna (Master/User) yang menandai selesai
+  completedByName    String?                 // Nama pengguna yang menyelesaikan
+  maxRevisions       Int                     @default(3)
+  revisionCount      Int                     @default(0)
+  // Specific JSON payload for ID Card (fullName, contactPhone, jobTitle, branch, specialNotes, photoDataUrl) or Banner print specs
+  specPayload        String
+  designerNotes      String?
+  draftPreviewUrl    String?
+  finalFileUrl       String?                 // Diisi hanya apabila file desain final benar-benar telah diunggah
+  isDemo             Boolean                 @default(false)
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  deletedAt          DateTime?
+
+  attachments        DesignOrderAttachment[]
+  revisions          DesignRevision[]
+
+  @@index([status, createdAt])
+  @@index([requesterId, status])
+  @@index([assignedDesignerId])
+}
+
+model DesignOrderAttachment {
+  id            String      @id @default(cuid())
+  designOrderId String
+  designOrder   DesignOrder @relation(fields: [designOrderId], references: [id], onDelete: Cascade)
+  fileName      String
+  fileType      String
+  fileSizeKb    Int
+  fileUrl       String
+  uploadedAt    DateTime    @default(now())
+}
+
+model DesignRevision {
+  id            String      @id @default(cuid())
+  designOrderId String
+  designOrder   DesignOrder @relation(fields: [designOrderId], references: [id], onDelete: Cascade)
+  revisionNo    Int
+  requestedBy   String
+  notes         String
+  draftUrl      String?
+  status        String      @default("Diminta")
+  createdAt     DateTime    @default(now())
+}
+
+model Task {
+  id            String     @id @default(cuid())
+  taskCode      String     @unique // TSK-202610-001
+  title         String
+  description   String?
+  assigneeId    String
+  assignee      User       @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creatorId     String
+  creator       User       @relation("TaskCreator", fields: [creatorId], references: [id])
+  priority      String     @default("Normal")
+  deadline      DateTime
+  status        String     @default("To Do") // To Do | In Progress | Review | Done
+  sourceModule  String     @default("Manual") // Manual | Kalender Konten | Order Desain | Pengadaan
+  sourceRefCode String?
+  checklistJson String?
+  commentsJson  String?
+  isDemo        Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  approvals     Approval[]
+}
+
+model Approval {
+  id           String   @id @default(cuid())
+  module       String   // CONTENT | PROCUREMENT | DESIGN_ORDER | TASK
+  targetId     String
+  taskId       String?
+  task         Task?    @relation(fields: [taskId], references: [id])
+  approverId   String
+  approver     User     @relation(fields: [approverId], references: [id])
+  decision     String   // PENDING | APPROVED | REJECTED | REVISION
+  notes        String?
+  decidedAt    DateTime @default(now())
+}
+
+model Notification {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category     String   // TASK | DEADLINE | CONTENT_APPROVAL | LIVE | PROCUREMENT | DESIGN_ORDER | COMMENT | AI_DOC | AI_IMAGE | AI_ERROR | ACCESS
+  title        String
+  message      String
+  linkModule   String?
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  userRole     String
+  module       String
+  action       String   // CREATE | UPDATE | DELETE | APPROVE | REJECT | LOGIN | CONFIG_CHANGE | ACCESS_DENIED
+  targetCode   String?
+  summary      String
+  beforeJson   String?
+  afterJson    String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module, action])
+}
+
+model AppSettings {
+  id                 String   @id @default("singleton")
+  appName            String   @default("BIM CREATIVE HUB")
+  appTagline         String   @default("AI Social Media & Creative Management Platform")
+  timezone           String   @default("Asia/Jakarta")
+  primaryColor       String   @default("#14532D")
+  emeraldColor       String   @default("#16A34A")
+  navyColor          String   @default("#172554")
+  accentGoldColor    String   @default("#F4B942")
+  fontFamily         String   @default("Inter")
+  maxDesignRevisions Int      @default(3)
+  aiProvider         String   @default("Local Sandbox + Configurable API")
+  aiTextModel        String   @default("gemini-2.5-pro / gpt-4o")
+  aiImageModel       String   @default("imagen-3 / dall-e-3")
+  aiEmbeddingModel   String   @default("text-embedding-004")
+  webSearchProvider  String   @default("Google Search API (Belum Aktif)")
+  aiApiKeyConfigured Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+}
