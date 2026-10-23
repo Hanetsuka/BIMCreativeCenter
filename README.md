@@ -12,11 +12,14 @@ Aplikasi web enterprise terpadu untuk pengelolaan **Digital Marketing, Social Me
    - `src/lib/ai-provider.ts`: Abstraction layer untuk integrasi multi-provider AI (Google Gemini, OpenAI, Anthropic, Stability AI) dan sanitasi Prompt Injection pada dokumen RAG.
    - `app/bim_creative_hub.html`: Salinan lengkap aplikasi frontend interaktif.
 
-## 2. Akun & Pengguna (Mode Produksi)
-Tidak ada lagi akun/data demo. Akun MASTER pertama dibuat otomatis dari `MASTER_EMAIL` + `MASTER_PASSWORD`
-saat login pertama. Setelah itu MASTER membuat user lain di **Master Settings → Users → + Buat Akun User / Tamu Baru**
-(role USER atau GUEST per cabang), serta dapat menonaktifkan akun dan **Reset Sandi**.
-Jika dibuka tanpa server (mis. file lokal/GitHub Pages), aplikasi tetap berjalan dalam mode demo lama.
+## 2. Akun Pengujian Bawaan (RBAC)
+Anda dapat beralih antar-role secara instan melalui dropdown **Pilih Sesi Pengguna** di bagian atas layar atau melalui layar Login:
+- **MASTER / SUPER ADMIN**: `master@bimcreative.id` / `BimMaster#2026` (Kendali penuh + Master Settings).
+- **USER — Social Media Specialist**: `rina.marketing@bimcreative.id` / `BimUser#2026`.
+- **USER — Senior Graphic Designer**: `budi.desainer@bimcreative.id` / `BimUser#2026`.
+- **USER — Ads & Procurement Officer**: `andi.ops@bimcreative.id` / `BimUser#2026`.
+- **TAMU / GUEST — Cabang Surabaya**: `tamu.surabaya@bimcreative.id` / `BimGuest#2026` (Terisolasi hanya pada Order ID Card, Order Banner, Status/Revisi milik Cabang Surabaya, dan Profil).
+- **TAMU / GUEST — Cabang Tuban**: `tamu.tuban@bimcreative.id` / `BimGuest#2026` (Terisolasi hanya pada Order milik Cabang Tuban).
 
 ## 3. Panduan Deployment Produksi (Next.js + PostgreSQL + S3)
 1. Siapkan database PostgreSQL dan variabel lingkungan pada `.env`:
@@ -26,11 +29,3 @@ Jika dibuka tanpa server (mis. file lokal/GitHub Pages), aplikasi tetap berjalan
    - `S3_BUCKET_URL` & kredensial Object Storage untuk penyimpanan file produksi.
 2. Jalankan migrasi Prisma: `npx prisma migrate deploy && npx prisma generate`.
 3. Konfigurasikan nama aplikasi, warna brand, batas revisi desain, dan status koneksi provider AI melalui menu **Master Settings**.
-
-## 4. Deploy Produksi di Vercel (login + data bersama)
-1. Import repo ke Vercel (Framework: *Other*, Output Directory `public` sudah di `vercel.json`).
-2. Tab **Storage** → buat/hubungkan **Upstash Redis** (Marketplace) ke project ini.
-3. **Settings → Environment Variables**: isi `SESSION_SECRET`, `MASTER_EMAIL`, `MASTER_PASSWORD`, `MASTER_NAME` (lihat `.env.example`).
-4. **Redeploy**, buka situs, login dengan MASTER_EMAIL/MASTER_PASSWORD, lalu buat user lain.
-
-Opsi lain: GitHub Pages (`.github/workflows/deploy-pages.yml`), Netlify (`netlify.toml`), atau server Node/Docker (`server.js`, tanpa login).

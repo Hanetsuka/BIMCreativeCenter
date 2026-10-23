@@ -1,8 +1,7 @@
 {
   "name": "bim-creative-hub",
-  "version": "3.0.1",
-  "description": "BIM CREATIVE HUB — AI Social Media, Creative Workspace & Design Order Management Platform",
-  "private": true,
+  "version": "3.0.0",
+  "description": "BIM CREATIVE HUB \u2014 AI Social Media, Creative Workspace & Design Order Management Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,5 +9,7 @@
     "db:generate": "npx prisma generate",
     "db:migrate": "npx prisma migrate deploy"
   },
-  "engines": { "node": ">=18.0.0" }
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
