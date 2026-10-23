@@ -3,9 +3,12 @@ const fs = require("fs");
 const path = require("path");
 const url = require("url");
 
+const os = require("os");
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
-const DATA_FILE = path.join(__dirname, "data_store.json");
+const DATA_FILE = process.env.VERCEL
+  ? path.join(os.tmpdir(), "data_store.json")
+  : path.join(__dirname, "data_store.json");
 
 function loadServerStore() {
   try {
@@ -40,9 +43,9 @@ function parseJsonBody(req) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+async function requestHandler(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 200, { ok: true });
-  const parsed = url.parse(req.url, true);
+  const parsed = url.parse(req.url || "/", true);
   const pathname = parsed.pathname || "/";
 
   if (pathname === "/api/health" && req.method === "GET") {
@@ -93,15 +96,32 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { status: "ok", mode: (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY) ? "cloud_api_connected" : "local_rag_engine", model: "gemini-2.5-pro", reply: "OK" });
     } catch (e) { return sendJson(res, 400, { error: e.message }); }
   }
-  if (pathname === "/" || pathname === "/index.html" || pathname === "/bim_creative_hub.html") {
-    const f = fs.existsSync(path.join(__dirname, "public", "index.html")) ? path.join(__dirname, "public", "index.html") : path.join(__dirname, "index.html");
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    return res.end(fs.readFileSync(f, "utf8"));
+
+  // Serve HTML for root or any SPA route
+  const candidates = [
+    path.join(__dirname, "index.html"),
+    path.join(__dirname, "public", "index.html"),
+    path.join(__dirname, "bim_creative_hub.html"),
+    path.join(process.cwd(), "index.html"),
+    path.join(process.cwd(), "public", "index.html")
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        return res.end(fs.readFileSync(candidate, "utf8"));
+      }
+    } catch (e) {}
   }
+
   return sendJson(res, 404, { error: "Not found" });
-});
+}
+
+const server = http.createServer(requestHandler);
 
 if (require.main === module) {
   server.listen(PORT, HOST, () => console.log("BIM CREATIVE HUB v3.0 running on port " + PORT));
 }
-module.exports = { server };
+
+module.exports = requestHandler;
+module.exports.server = server;
