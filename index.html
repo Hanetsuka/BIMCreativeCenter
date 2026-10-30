@@ -1038,6 +1038,46 @@
 
     let chartInstances = {};
 
+    function normalizeBranchName(name) {
+      const n = String(name || '').trim();
+      if (/^tuban$/i.test(n)) return 'Cabang Tuban';
+      if (/^surabaya$/i.test(n)) return 'Cabang Surabaya';
+      if (/^bandung$/i.test(n)) return 'Cabang Bandung';
+      if (/^jakarta$/i.test(n)) return 'Pusat Jakarta';
+      return n;
+    }
+
+    function sanitizeDatabaseBranches(dbObj) {
+      if (!dbObj || !dbObj.appSettings) return dbObj;
+      const rawBranches = Array.isArray(dbObj.appSettings.branches)
+        ? dbObj.appSettings.branches
+        : ['Pusat Jakarta', 'Cabang Surabaya', 'Cabang Tuban', 'Cabang Bandung'];
+      const uniqueBranches = [];
+      rawBranches.forEach(b => {
+        const clean = normalizeBranchName(b);
+        if (clean && !uniqueBranches.includes(clean)) uniqueBranches.push(clean);
+      });
+      dbObj.appSettings.branches = uniqueBranches;
+
+      const collections = [
+        dbObj.users,
+        dbObj.designOrders,
+        dbObj.contentItems,
+        dbObj.liveSchedules,
+        dbObj.procurementRequests,
+        dbObj.adReports,
+        dbObj.tasks
+      ];
+      collections.forEach(list => {
+        if (Array.isArray(list)) {
+          list.forEach(item => {
+            if (item && item.branch) item.branch = normalizeBranchName(item.branch);
+          });
+        }
+      });
+      return dbObj;
+    }
+
     function loadDatabase() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -1051,13 +1091,13 @@
               masterUsr.passwordHash = 'Berkahinsanvalensi';
               masterUsr.fullName = 'Valensi';
             }
-            return parsed;
+            return sanitizeDatabaseBranches(parsed);
           }
         }
       } catch (err) {
         console.warn('Storage read fallback to in-memory state:', err);
       }
-      return getInitialDatabase();
+      return sanitizeDatabaseBranches(getInitialDatabase());
     }
 
     function syncToBackendServer(endpoint, method, payload) {
@@ -1300,7 +1340,7 @@
         }
         if (data && data.status === 'ok' && data.db && Array.isArray(data.db.users) && data.db.appSettings) {
           const currentUrl = getGasWebAppUrl();
-          DB = data.db;
+          DB = sanitizeDatabaseBranches(data.db);
           DB.appSettings.gasWebAppUrl = currentUrl;
           DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — Data ditarik dari Google Drive (Update terakhir: ${data.updatedBy || 'Tim'})`;
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch (_) {}
@@ -6261,6 +6301,118 @@
         .replace(/^(\s*)[*-]\s+/gm, '$1• ');
     }
 
+    async function callGeminiJson(promptText, systemText) {
+      const raw = await callGeminiText({
+        systemInstruction: (systemText || 'Kamu adalah asisten kreatif profesional BIM Creative Hub.') + '\nKembalikan HANYA format JSON murni yang valid tanpa teks pengantar dan tanpa blok kode markdown.',
+        contents: [{ role: 'user', parts: [{ text: promptText }] }],
+        maxOutputTokens: 3072,
+        temperature: 0.7
+      });
+      const cleaned = String(raw || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+      }
+      throw new Error('Format JSON dari AI tidak lengkap.');
+    }
+
+    function generateSmartDomainData(niche, product, audience, region, platform, objective) {
+      const text = `${niche} ${product}`.toLowerCase();
+      const isFinance = /emas|tabungan|simpanan|kredit|deposito|pembiayaan|syariah|bmt|keuangan|investasi|bank|arisan|dana|pinjaman|modal/.test(text);
+      const isFood = /kopi|makanan|minuman|kuliner|kafe|resto|snack|herbal|madu|roti|susu/.test(text);
+      const isService = /jasa|layanan|desain|cetak|banner|id card|percetakan|konsultan|kursus|sekolah|pendidikan|klinik|laundry/.test(text);
+
+      const cleanAud = (audience && !/Manajer HRD, Procurement/i.test(audience))
+        ? audience
+        : (isFinance ? 'Keluarga Muda, Pedagang UMKM & Masyarakat Umum' : isFood ? 'Pecinta Kuliner, Mahasiswa & Pekerja Kantoran' : 'Pelanggan Ritel, Komunitas & Instansi Lokal');
+      const cleanObj = (objective && !/Leads B2B & Brand Authority/i.test(objective))
+        ? objective
+        : (isFinance ? 'Peningkatan Nasabah Baru & Kepercayaan Anggota' : 'Peningkatan Penjualan & Pesanan Langsung via WhatsApp');
+      const cleanTag = '#' + String(product || niche || 'ProdukUnggulan').replace(/[^a-zA-Z0-9]/g, '');
+
+      if (isFinance) {
+        return {
+          audience: cleanAud,
+          objective: cleanObj,
+          summary: `Minat masyarakat terhadap "${niche}" (${product}) di ${region} meningkat pesat karena kebutuhan menjaga nilai tabungan dari inflasi dengan setoran yang ringan, aman, dan transparan bagi ${cleanAud}.`,
+          risingTopics: [
+            `Simulasi Menabung ${product} Mulai Nominal Kecil secara Rutin`,
+            `Perbandingan Nilai ${product} vs Tabungan Konvensional dalam 3–5 Tahun`,
+            `Cara Mudah Buka Akun & Transparansi Keamanan Layanan di Cabang`
+          ],
+          painPoints: [
+            'Masyarakat mengira butuh modal besar untuk mulai menabung/investasi',
+            'Kekhawatiran soal keamanan dana, biaya admin tersembunyi, dan kemudahan pencairan saat darurat',
+            'Belum paham alur pendaftaran cepat di cabang terdekat'
+          ],
+          funnelIdeas: {
+            tofu: `Video Reels/TikTok 20 Detik: "Cukup Sisihkan Rp10.000/Hari, Lihat Hasil ${product} Setelah 1 Tahun!"`,
+            mofu: `Carousel Edukasi 5 Slide: "Kenapa ${product} Jadi Pilihan Aman untuk Masa Depan Keluarga & Pendidikan Anak"`,
+            bofu: `Testimoni Anggota/Nasabah Nyata + Panduan Daftar Cepat 5 Menit di Cabang Resmi`
+          },
+          hooks: [
+            `"Uang jajan harian sering habis tanpa terasa? Coba ubah jadi ${product} mulai hari ini!"`,
+            `"Jangan tunggu punya uang jutaan baru mulai menyisihkan ${product}—simak simulasi nyatanya!"`,
+            `"3 alasan kenapa ${cleanAud} memilih ${product} untuk persiapan dana masa depan."`
+          ],
+          hashtags: `${cleanTag} #TabunganAman #PerencanaanKeuangan #InvestasiCerdas #BIMCreativeHub`
+        };
+      }
+      if (isFood) {
+        return {
+          audience: cleanAud,
+          objective: cleanObj,
+          summary: `Pasar "${niche}" (${product}) di ${region} sangat digerakkan oleh visual menggugah selera (close-up tekstur/aroma), cerita bahan baku asli, dan ulasan jujur pelanggan di ${platform}.`,
+          risingTopics: [
+            `ASMR & Close-Up Proses Pembuatan / Penyajian ${product}`,
+            `Cerita Bahan Baku Pilihan & Keaslian Rasa ${product}`,
+            `Paket Bundling Hemat untuk Teman Kerja atau Keluarga`
+          ],
+          painPoints: [
+            'Rasa dan porsi sering tidak sesuai dengan foto promosi',
+            'Pengiriman lambat atau kemasan kurang aman saat dibawa pulang'
+          ],
+          funnelIdeas: {
+            tofu: `Reels ASMR 15 Detik: Proses tuang/saji ${product} yang bikin penasaran`,
+            mofu: `Video 3 Keunggulan Bahan Baku Asli ${product} dibanding produk instan biasa`,
+            bofu: `Promo Bundling Minggu Ini + Link Order Cepat via WhatsApp Cabang`
+          },
+          hooks: [
+            `"Pecinta ${niche} wajib coba! Ini yang bikin ${product} beda dari suapan pertama."`,
+            `"Rahasia segarnya ${product} ternyata ada di proses pilih bahannya!"`
+          ],
+          hashtags: `${cleanTag} #KulinerFavorit #RekomendasiEnak #UMKMLokal #BIMCreativeHub`
+        };
+      }
+      return {
+        audience: cleanAud,
+        objective: cleanObj,
+        summary: `Peluang pasar "${niche}" (${product}) di ${region} pada ${platform} sangat kuat bila menonjolkan bukti hasil nyata (before-after), kemudahan pemesanan, dan pelayanan ramah bagi ${cleanAud}.`,
+        risingTopics: [
+          `Bukti Kualitas & Proses Pengerjaan ${product} dari Awal sampai Selesai`,
+          `Tips Memilih ${product} yang Tepat Sesuai Kebutuhan & Anggaran`,
+          `Tanya-Jawab (FAQ) Seputar Layanan, Harga & Garansi Kepuasan`
+        ],
+        painPoints: [
+          'Takut hasil akhir tidak sesuai ekspektasi atau janji promosi',
+          'Respon admin lambat dan prosedur pemesanan berbelit-belit',
+          'Harga kurang transparan di awal'
+        ],
+        funnelIdeas: {
+          tofu: `Video Singkat 15 Detik: Transformasi / Hasil Nyata Penggunaan ${product}`,
+          mofu: `Carousel 4 Keunggulan Utama ${product} & Cara Kerja Layanan Kami`,
+          bofu: `Ulasan Pelanggan Puas + Penawaran Konsultasi/Pemesanan Langsung di Cabang`
+        },
+        hooks: [
+          `"Lagi cari ${product} yang hasilnya rapi, cepat, dan terpercaya? Ini buktinya!"`,
+          `"Jangan salah pilih ${niche}! Perhatikan 3 hal penting ini sebelum memesan."`,
+          `"Begini cara ${cleanAud} mendapatkan layanan ${product} terbaik tanpa ribet."`
+        ],
+        hashtags: `${cleanTag} #SolusiTerpercaya #KualitasTerbaik #LayananProfesional #BIMCreativeHub`
+      };
+    }
+
     function consumeAiQuota(credits = 2) {
       const user = getCurrentUser();
       if ((user.aiQuotaUsed || 0) + credits > (user.aiQuotaLimit || 100)) {
@@ -7569,45 +7721,91 @@
       `;
     }
 
-    function runAiTrendAnalysisSubmit(e) {
-      e.preventDefault();
+    async function runAiTrendAnalysisSubmit(e) {
+      if (e && e.preventDefault) e.preventDefault();
       if (!consumeAiQuota(3)) return;
       const niche = document.getElementById('trd-niche').value.trim();
       const product = document.getElementById('trd-prod').value.trim();
-      const audience = document.getElementById('trd-aud').value.trim();
-      const region = document.getElementById('trd-region').value.trim();
-      const platform = document.getElementById('trd-plat').value.trim();
-      const objective = document.getElementById('trd-obj').value.trim();
+      const rawAud = document.getElementById('trd-aud').value.trim();
+      const region = document.getElementById('trd-region').value.trim() || 'Indonesia';
+      const platform = document.getElementById('trd-plat').value.trim() || 'Instagram & TikTok';
+      const rawObj = document.getElementById('trd-obj').value.trim();
 
+      const smart = generateSmartDomainData(niche, product, rawAud, region, platform, rawObj);
       APP_STATE.aiLastTrendResult = {
         niche,
         product,
-        audience,
+        audience: smart.audience,
         region,
         platform,
-        objective,
-        summary: `Analisis untuk "${niche}" (${product}) di wilayah ${region} menunjukkan audiens ${audience} sangat merespons pembuktian kualitas visual secara langsung (demonstrasi produk) dan transparansi spesifikasi B2B.`,
-        risingTopics: [`Studi Kasus Penggunaan ${product}`, `Perbandingan Kualitas & Durabilitas di ${platform}`, `Behind The Scenes Standar Kualitas BIM`],
-        painPoints: ['Kekhawatiran kualitas tidak sesuai foto katalog', 'Proses pemesanan dan revisi desain yang rumit'],
-        eduAngles: [`Panduan Memilih ${product} Sesuai Kebutuhan Cabang`, 'Tips Merawat Produk Agar Awet Bertahun-tahun'],
-        promoAngles: [`Penawaran Khusus Paket Korporat ${product}`, 'Konsultasi Desain Gratis via BIM Creative Hub'],
-        funnelIdeas: {
-          tofu: `Short Video 15 Detik: Eksperimen Visual ${product}`,
-          mofu: `Carousel 5 Alasan ${audience} Beralih ke Standar Baru`,
-          bofu: `Testimoni Klien & Panduan Order Cepat untuk ${objective}`
-        },
-        hooks: [
-          `"Masih pakai cara lama untuk ${niche}? Lihat perbandingan nyatanya dalam 15 detik!"`,
-          `"Ini rahasia tim ${audience} menghemat anggaran sekaligus menaikkan citra brand."`
-        ],
-        hashtags: '#BIMCreativeHub #StrategiKonten2026 #SolusiKorporat #DigitalMarketingID'
+        objective: smart.objective,
+        summary: smart.summary,
+        risingTopics: smart.risingTopics,
+        painPoints: smart.painPoints,
+        eduAngles: [`Panduan Lengkap ${product} untuk ${smart.audience}`, `Cara Memaksimalkan Manfaat ${product}`],
+        promoAngles: [`Program Spesial ${product} Bulan Ini`, `Konsultasi & Pendaftaran Mudah di Cabang Resmi`],
+        funnelIdeas: smart.funnelIdeas,
+        hooks: smart.hooks,
+        hashtags: smart.hashtags
       };
       renderAIStudio();
-      showToast('Analisis Niche & Peluang Kampanye selesai disusun.', 'success');
+
+      if (isGeminiReady()) {
+        showToast('Menyusun analisis mendalam dengan Google Gemini...', 'info');
+        try {
+          const aiJson = await callGeminiJson(
+            `Buatkan analisis riset konten media sosial untuk:\n- Industri/Niche: ${niche}\n- Produk/Layanan: ${product}\n- Platform: ${platform}\n- Wilayah: ${region}\n- Target Audiens: ${smart.audience}\n- Tujuan Pemasaran: ${smart.objective}\n\nKembalikan JSON dengan struktur persis:\n{"audience":"target audiens spesifik yang cocok dengan produk ini","objective":"tujuan pemasaran yang relevan","summary":"ringkasan analisis pasar 2 kalimat","risingTopics":["topik 1","topik 2","topik 3"],"painPoints":["masalah audiens 1","masalah audiens 2"],"funnelIdeas":{"tofu":"ide konten awareness spesifik","mofu":"ide konten edukasi spesifik","bofu":"ide konten konversi spesifik"},"hooks":["\\"hook 1\\"","\\"hook 2\\"","\\"hook 3\\""],"hashtags":"#Tag1 #Tag2 #Tag3 #Tag4"}`
+          );
+          if (aiJson && aiJson.summary) {
+            APP_STATE.aiLastTrendResult = {
+              niche,
+              product,
+              audience: aiJson.audience || smart.audience,
+              region,
+              platform,
+              objective: aiJson.objective || smart.objective,
+              summary: aiJson.summary,
+              risingTopics: Array.isArray(aiJson.risingTopics) && aiJson.risingTopics.length ? aiJson.risingTopics : smart.risingTopics,
+              painPoints: Array.isArray(aiJson.painPoints) && aiJson.painPoints.length ? aiJson.painPoints : smart.painPoints,
+              eduAngles: [`Edukasi ${product}`, `Tips & Simulasi ${product}`],
+              promoAngles: [`Penawaran ${product}`, `Layanan Cabang Resmi`],
+              funnelIdeas: aiJson.funnelIdeas || smart.funnelIdeas,
+              hooks: Array.isArray(aiJson.hooks) && aiJson.hooks.length ? aiJson.hooks : smart.hooks,
+              hashtags: aiJson.hashtags || smart.hashtags
+            };
+            renderAIStudio();
+            showToast(`Analisis Niche "${niche}" berhasil disusun oleh Google Gemini!`, 'success');
+            return;
+          }
+        } catch (err) {
+          console.warn('Gemini trend fallback:', err);
+        }
+      }
+      showToast(`Analisis Niche & Peluang untuk "${product}" selesai disusun!`, 'success');
     }
 
-    function trendActionGenerateIdeas() {
-      showToast('3 Ide Konten Funnel (TOFU, MOFU, BOFU) telah diperbarui pada panel hasil.', 'success');
+    async function trendActionGenerateIdeas() {
+      const r = APP_STATE.aiLastTrendResult || {};
+      const prod = r.product || 'Produk Unggulan';
+      const aud = r.audience || 'Masyarakat Umum';
+      const variations = [
+        {
+          tofu: `Reels POV 15 Detik: "Kesalahan umum saat belum mengenal ${prod} dan cara mengatasinya"`,
+          mofu: `Infografis Carousel: "Simulasi & Perbandingan Manfaat ${prod} bagi ${aud}"`,
+          bofu: `Video Tanya-Jawab Singkat + Ajakan Kunjungi Cabang Terdekat Hari Ini`
+        },
+        {
+          tofu: `Video Hook Pertanyaan: "Kenapa semakin banyak ${aud} beralih ke ${prod} di tahun 2026?"`,
+          mofu: `Tutorial Langkah demi Langkah: "Cara Mudah Memulai ${prod} Tanpa Ribet"`,
+          bofu: `Cerita Sukses / Testimoni Pengguna ${prod} + Link Konsultasi Cepat`
+        }
+      ];
+      const pick = variations[Math.floor(Math.random() * variations.length)];
+      if (APP_STATE.aiLastTrendResult) {
+        APP_STATE.aiLastTrendResult.funnelIdeas = pick;
+      }
+      renderAIStudio();
+      showToast(`Variasi ide konten baru (TOFU, MOFU, BOFU) untuk "${prod}" berhasil digenerate!`, 'success');
     }
 
     function trendActionCreateCalendar() {
@@ -7871,42 +8069,82 @@
       `;
     }
 
-    function generateAiScriptSubmit(e) {
-      e.preventDefault();
+    async function generateAiScriptSubmit(e) {
+      if (e && e.preventDefault) e.preventDefault();
       if (!consumeAiQuota(3)) return;
       const tpl = document.getElementById('scr-tpl').value;
       const prod = document.getElementById('scr-prod').value.trim();
-      const plat = document.getElementById('scr-plat').value.trim();
-      const cta = document.getElementById('scr-cta').value.trim();
+      const plat = document.getElementById('scr-plat').value.trim() || 'Instagram Reels & TikTok';
+      const cta = document.getElementById('scr-cta').value.trim() || DB.appSettings.brandGuideline.mandatoryCta;
+      const durInput = (document.getElementById('scr-dur') ? document.getElementById('scr-dur').value.trim() : '') || '30 Detik • 9:16';
+
+      const smart = generateSmartDomainData(tpl, prod, '', 'Indonesia', plat, '');
+      const isFinance = /emas|tabungan|simpanan|kredit|deposito|pembiayaan|syariah|bmt|keuangan|investasi|bank/i.test(prod);
+
+      const fallbackScenes = isFinance ? [
+        { no: 1, dur: '00:00 - 00:04', visual: `Talent menunjukkan perbandingan uang receh harian vs kilau / buku ${prod}.`, cam: 'Medium Close-Up Eye-Level', light: 'Warm Natural & Gold Accent', audio: 'SFX Koin + Musik Inspiratif', overlay: `Mulai ${prod} dari Nominal Kecil?`, trans: 'Quick Cut' },
+        { no: 2, dur: '00:04 - 00:14', visual: `Penjelasan grafik sederhana pertumbuhan nilai ${prod} untuk masa depan keluarga.`, cam: 'Over-the-shoulder & Infografis', light: 'Bright Clean Studio', audio: 'Narasi VO Edukasi Manfaat', overlay: 'Aman, Mudah & Terjangkau', trans: 'Slide Wipe' },
+        { no: 3, dur: '00:14 - 00:22', visual: `Suasana pelayanan ramah di kantor cabang resmi saat membuka ${prod}.`, cam: 'Gimbal Smooth Pan', light: 'Soft Corporate Green', audio: 'VO Kemudahan Proses Daftar', overlay: 'Proses Cepat 5 Menit di Cabang', trans: 'Smooth Dissolve' },
+        { no: 4, dur: '00:22 - 00:30', visual: `Talent tersenyum menunjukkan bukti tabungan + teks informasi kontak cabang.`, cam: 'Center Hero Shot', light: 'Full Warm Studio Glow', audio: 'Musik Puncak + VO CTA', overlay: cta, trans: 'End Frame' }
+      ] : [
+        { no: 1, dur: '00:00 - 00:04', visual: `Visual pembuka kontras tinggi menampilkan ${prod} secara close-up.`, cam: '85mm Close-Up Push-In', light: 'Dramatic Rim Gold', audio: 'Audio Hook Impact + Musik Mulai', overlay: `Kenapa Pilih ${prod}?`, trans: 'Quick Cut' },
+        { no: 2, dur: '00:04 - 00:14', visual: `Masalah umum yang sering dialami audiens sebelum memakai ${prod}.`, cam: 'Handheld POV / Medium Shot', light: 'Natural Contrast', audio: 'VO Masalah Audiens', overlay: 'Jangan Sampai Salah Pilih!', trans: 'Whip Pan' },
+        { no: 3, dur: '00:14 - 00:22', visual: `Demonstrasi keunggulan utama ${prod} dan kepuasan pengguna.`, cam: 'Medium Tracking Shot', light: 'Soft Key Light Studio', audio: 'Narasi Voice-Over Solusi', overlay: `Keunggulan Utama ${prod}`, trans: 'Smooth Dissolve' },
+        { no: 4, dur: '00:22 - 00:30', visual: `Tampilan akhir ${prod} beserta ajakan menghubungi cabang resmi.`, cam: 'Center Hero Packshot', light: 'Bright Corporate Emerald', audio: 'VO Call to Action', overlay: cta, trans: 'End Card' }
+      ];
 
       APP_STATE.aiLastScriptResult = {
         template: tpl,
         product: prod,
-        objective: 'Engagement & Konversi',
-        audience: 'Target Audiens ' + plat,
+        objective: smart.objective,
+        audience: smart.audience,
         platform: plat,
-        duration: '30 Detik',
-        tone: 'Profesional & Meyakinkan',
-        visualStyle: 'Modern Studio Brand Green & Gold',
+        duration: durInput,
+        tone: 'Profesional, Hangat & Solutif',
+        visualStyle: 'Modern Clean Emerald & Warm Gold',
         ratio: '9:16',
-        concept: `Pendekatan ${tpl} yang menonjolkan nilai unik ${prod} secara visual dalam 3 detik pertama.`,
-        title: `${tpl}: Solusi Unggulan ${prod}`,
-        hook: `Sudah tahu kenapa banyak tim profesional beralih ke ${prod} bulan ini?`,
+        concept: `Naskah ${tpl} yang mengangkat manfaat nyata ${prod} bagi ${smart.audience}.`,
+        title: `${tpl}: ${prod}`,
+        hook: smart.hooks[0].replace(/^"|"$/g, ''),
         fullScript: `Naskah lengkap ${tpl} untuk ${prod} di ${plat}.`,
-        voiceOver: `"Jangan kompromikan standar kualitas kerja Anda. Dengan ${prod}, setiap detail dirancang presisi untuk mendukung produktivitas harian. ${cta}"`,
+        voiceOver: isFinance
+          ? `"Sering merasa uang habis tanpa terasa setiap bulan? Saatnya beralih ke ${prod}! Dengan setoran ringan, aman, dan transparan, Anda sudah menyiapkan masa depan keluarga dengan tenang. Proses daftarnya cepat dan didampingi langsung oleh tim kami. ${cta}!"`
+          : `"Sedang mencari ${prod} yang benar-benar teruji kualitasnya? Bersama layanan resmi kami, Anda mendapatkan kualitas terbaik, proses cepat, dan pendampingan penuh untuk kebutuhan ${smart.audience}. ${cta}!"`,
         cta: cta,
-        caption: `Standar baru untuk kebutuhan profesional Anda: ${prod}. ${cta}`,
-        hashtags: '#BIMCreativeHub #KontenProfesional #Produktivitas',
-        imgPrompt: `Professional commercial studio shot of ${prod}, emerald green and navy lighting, high detail, 8k`,
-        vidPrompt: `Cinematic gimbal movement showcasing ${prod} in a modern executive studio, 24fps`,
-        negPrompt: 'blurry, watermark, distorted, low quality',
-        scenes: [
-          { no: 1, dur: '00:00 - 00:04', visual: `Visual pembuka kontras tinggi menampilkan ${prod} secara close-up.`, cam: '85mm Close-Up Push-In', light: 'Dramatic Rim Gold', audio: 'Audio Hook Impact + Musik Mulai', overlay: `Kenapa Pilih ${prod}?`, trans: 'Quick Cut' },
-          { no: 2, dur: '00:04 - 00:18', visual: `Demonstrasi fitur utama dan penggunaan nyata oleh talenta.`, cam: 'Medium Tracking Shot', light: 'Soft Key Light Studio', audio: 'Narasi Voice-Over Inti', overlay: 'Kualitas Teruji & Presisi', trans: 'Smooth Dissolve' },
-          { no: 3, dur: '00:18 - 00:30', visual: `Tampilan akhir produk beserta informasi pemesanan cabang resmi.`, cam: 'Center Hero Packshot', light: 'Bright Corporate Emerald', audio: 'VO Call to Action', overlay: cta, trans: 'End Card' }
-        ]
+        caption: `Solusi cerdas untuk ${smart.audience}: ${prod}. Aman, praktis, dan terpercaya. ${cta}.`,
+        hashtags: smart.hashtags,
+        imgPrompt: `Professional commercial photography representing ${prod} for Indonesian ${smart.audience}, warm emerald green (#14532D) and gold (#F4B942) brand accents, clean modern lighting, 8k`,
+        vidPrompt: `Cinematic 9:16 vertical video showcasing ${prod} with friendly Indonesian talent, smooth gimbal movement, warm lighting, 24fps`,
+        negPrompt: 'blurry, watermark, distorted, low quality, messy background',
+        scenes: fallbackScenes
       };
       renderAIStudio();
+
+      if (isGeminiReady()) {
+        showToast('Menyusun naskah & storyboard spesifik dengan Google Gemini...', 'info');
+        try {
+          const aiSc = await callGeminiJson(
+            `Buatkan naskah video (${tpl}) dan storyboard 4 scene untuk:\n- Produk/Layanan: ${prod}\n- Platform: ${plat}\n- Durasi: ${durInput}\n- Target Audiens: ${smart.audience}\n- CTA: ${cta}\n\nKembalikan JSON dengan struktur persis:\n{"title":"judul menarik","hook":"kalimat hook 3 detik pertama","voiceOver":"naskah voice over lengkap 3-4 kalimat bahasa Indonesia","caption":"caption instagram/tiktok lengkap","hashtags":"#tag1 #tag2 #tag3","imgPrompt":"prompt bahasa inggris detail untuk generate gambar visual produk/layanan ini","vidPrompt":"prompt bahasa inggris untuk video scene","scenes":[{"no":1,"dur":"00:00 - 00:04","visual":"deskripsi adegan visual","cam":"gerakan kamera","light":"pencahayaan","audio":"musik/sfx","overlay":"teks di layar","trans":"transisi"},{"no":2,"dur":"00:04 - 00:14","visual":"...","cam":"...","light":"...","audio":"...","overlay":"...","trans":"..."},{"no":3,"dur":"00:14 - 00:22","visual":"...","cam":"...","light":"...","audio":"...","overlay":"...","trans":"..."},{"no":4,"dur":"00:22 - 00:30","visual":"...","cam":"...","light":"...","audio":"...","overlay":"...","trans":"..."}]}`
+          );
+          if (aiSc && aiSc.voiceOver) {
+            Object.assign(APP_STATE.aiLastScriptResult, {
+              title: aiSc.title || APP_STATE.aiLastScriptResult.title,
+              hook: aiSc.hook || APP_STATE.aiLastScriptResult.hook,
+              voiceOver: aiSc.voiceOver,
+              caption: aiSc.caption || APP_STATE.aiLastScriptResult.caption,
+              hashtags: aiSc.hashtags || APP_STATE.aiLastScriptResult.hashtags,
+              imgPrompt: aiSc.imgPrompt || APP_STATE.aiLastScriptResult.imgPrompt,
+              vidPrompt: aiSc.vidPrompt || APP_STATE.aiLastScriptResult.vidPrompt,
+              scenes: Array.isArray(aiSc.scenes) && aiSc.scenes.length ? aiSc.scenes : fallbackScenes
+            });
+            renderAIStudio();
+            showToast(`Script & Storyboard "${prod}" selesai disusun oleh Google Gemini!`, 'success');
+            return;
+          }
+        } catch (err) {
+          console.warn('Gemini script fallback:', err);
+        }
+      }
       showToast(`Script & Storyboard "${prod}" berhasil dibuat!`, 'success');
     }
 
@@ -7980,17 +8218,40 @@
     // -------------------------------------------------------------------------
     // G.5 AI IMAGE STUDIO (Text-to-Image, Edit, Ratios, Side-by-Side, Canvas Engine)
     // -------------------------------------------------------------------------
+    function setQuickImageStudioPrompt(promptText, objText, styleText) {
+      APP_STATE.aiPendingImagePrompt = promptText;
+      const pEl = document.getElementById('img-prompt');
+      if (pEl) pEl.value = promptText;
+      const oEl = document.getElementById('img-obj');
+      if (oEl && objText) oEl.value = objText;
+      const sEl = document.getElementById('img-style');
+      if (sEl && styleText) sEl.value = styleText;
+    }
+
     function buildAiImageStudioHtml() {
       const gens = filterDemoItems(DB.imageGenerations);
-      const selected = gens.find(g => g.id === APP_STATE.aiSelectedImageId) || gens[0] || DB.imageGenerations[0] || {
+      const hasSavedGens = gens.length > 0;
+      const selected = gens.find(g => g.id === APP_STATE.aiSelectedImageId) || gens[0] || {
         id: 'img_preview_empty',
         mainObject: 'Pratinjau Studio Visual AI',
         aspectRatio: '1:1',
         targetResolution: '1024 × 1024',
         quality: 'High Quality',
+        providerUsed: 'AI Flux & Gemini Visual Engine',
         imageUrl: STUDIO_IMG_PRODUCT,
-        prompt: 'Masukkan deskripsi visual di sebelah kiri lalu klik Generate untuk membuat gambar baru.'
+        prompt: 'Masukkan deskripsi visual di sebelah kiri lalu klik Generate untuk membuat gambar AI baru.'
       };
+
+      const activeCtxProd = (getActiveBrandProductContext() || {}).productName || '';
+      const cleanDefaultObj = (activeCtxProd && !/BIM Executive Tumbler/i.test(activeCtxProd))
+        ? activeCtxProd
+        : (hasSavedGens ? selected.mainObject : 'Simpanan Tabungan Emas & Layanan Cabang');
+
+      const defaultPromptValue = APP_STATE.aiPendingImagePrompt
+        || (hasSavedGens ? selected.prompt : '')
+        || (APP_STATE.aiLastPromptResult && APP_STATE.aiLastPromptResult.finalImagePrompt)
+        || (APP_STATE.aiLastScriptResult && APP_STATE.aiLastScriptResult.imgPrompt)
+        || 'Fotografi komersial profesional Simpanan Tabungan Emas batangan 24K & koin emas berkilau di atas meja kayu elegan dengan pencahayaan studio hangat bernuansa hijau zamrud dan emas mewah';
 
       const ratios = [
         ['1:1', '1:1 — 1024 × 1024 (Feed / Square)'],
@@ -8009,9 +8270,9 @@
             <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div>
                 <h3 class="text-sm sm:text-base font-extrabold font-display text-slate-900 dark:text-white">Generator &amp; Editor Visual AI</h3>
-                <p class="text-[11px] text-slate-500 mt-0.5">Masukkan deskripsi gambar, pilih gaya &amp; rasio ukuran visual.</p>
+                <p class="text-[11px] text-slate-500 mt-0.5">Masukkan deskripsi gambar (Bahasa Indonesia / Inggris), pilih gaya &amp; rasio.</p>
               </div>
-              <span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold shrink-0">Siap Pakai</span>
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold shrink-0">AI Visual Aktif</span>
             </div>
 
             <form onsubmit="handleAiImageGenerateSubmit(event)" class="space-y-4">
@@ -8019,7 +8280,12 @@
               <div class="bim-form-section space-y-3.5">
                 <div>
                   <label class="bim-label">Deskripsi Gambar / Prompt Utama <span class="text-red-500">*</span></label>
-                  <textarea id="img-prompt" required rows="3" placeholder="Deskripsikan visual yang ingin dibuat..." class="bim-input">${escapeHtml(selected ? selected.prompt : 'Professional studio product photography of BIM Executive Tumbler')}</textarea>
+                  <textarea id="img-prompt" required rows="3" placeholder="Contoh: Foto produk tabungan emas batangan berkilau di meja kantor modern..." class="bim-input">${escapeHtml(defaultPromptValue)}</textarea>
+                  <div class="flex flex-wrap gap-1.5 mt-2">
+                    <button type="button" onclick="setQuickImageStudioPrompt('Fotografi komersial profesional tabungan emas batangan 24K dan koin emas berkilau di atas podium marmer hijau zamrud dengan pencahayaan studio hangat', 'Simpanan Tabungan Emas', 'Commercial Advertising')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/40 text-[10px] font-semibold text-slate-700 dark:text-slate-300 transition">+ Tabungan Emas</button>
+                    <button type="button" onclick="setQuickImageStudioPrompt('Suasana pelayanan ramah staf bank syariah berhijab melayani nasabah keluarga muda di kantor cabang modern bernuansa hijau zamrud dan emas, fotografi sinematik', 'Layanan Kantor Cabang', 'Cinematic Studio')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/40 text-[10px] font-semibold text-slate-700 dark:text-slate-300 transition">+ Layanan Cabang</button>
+                    <button type="button" onclick="setQuickImageStudioPrompt('3D isometric illustration of digital financial growth, gold coins, smartphone banking app, emerald green and warm gold palette, clean corporate background', 'Ilustrasi Keuangan Digital', '3D Isometric Render')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/40 text-[10px] font-semibold text-slate-700 dark:text-slate-300 transition">+ 3D Ilustrasi</button>
+                  </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -8034,7 +8300,7 @@
                   <div>
                     <label class="bim-label">Gaya Desain</label>
                     <select id="img-style" class="bim-input">
-                      ${['Product photography', 'Commercial Advertising', 'Cinematic Studio', 'Corporate Minimalist', '3D Isometric Render', 'Editorial Illustration'].map(s => `<option value="${s}">${s}</option>`).join('')}
+                      ${['Product photography', 'Commercial Advertising', 'Cinematic Studio', 'Corporate Minimalist', '3D Isometric Render', 'Editorial Illustration'].map(s => `<option value="${s}" ${selected.style === s ? 'selected' : ''}>${s}</option>`).join('')}
                     </select>
                   </div>
                 </div>
@@ -8043,7 +8309,7 @@
                   <div>
                     <label class="bim-label">Rasio &amp; Target Resolusi <span class="text-red-500">*</span></label>
                     <select id="img-ratio" class="bim-input">
-                      ${ratios.map(([r, lbl]) => `<option value="${r}">${lbl}</option>`).join('')}
+                      ${ratios.map(([r, lbl]) => `<option value="${r}" ${selected.aspectRatio === r ? 'selected' : ''}>${lbl}</option>`).join('')}
                     </select>
                   </div>
                   <div>
@@ -8052,7 +8318,7 @@
                       <option value="Standard">Standard</option>
                       <option value="High Quality" selected>High Quality</option>
                       <option value="HD / High Resolution">HD / High Resolution</option>
-                      <option value="Upscale (Jika Didukung Provider)">Upscale (Super-Resolution)</option>
+                      <option value="Upscale (Super-Resolution)">Upscale (Super-Resolution)</option>
                     </select>
                   </div>
                 </div>
@@ -8067,51 +8333,51 @@
                 <div class="pt-3.5 mt-2 border-t border-slate-200/60 dark:border-slate-800 space-y-3.5">
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label class="bim-label">Objek Utama Produk</label>
-                      <input type="text" id="img-obj" value="${escapeHtml((getActiveBrandProductContext() || {}).productName || 'BIM Executive Tumbler Emerald')}" class="bim-input" />
+                      <label class="bim-label">Objek Utama / Judul Visual</label>
+                      <input type="text" id="img-obj" value="${escapeHtml(cleanDefaultObj)}" class="bim-input" />
                     </div>
                     <div>
                       <label class="bim-label">Tujuan Penggunaan</label>
-                      <input type="text" id="img-purpose" value="Visual Iklan &amp; Poster Kampanye Q4" class="bim-input" />
+                      <input type="text" id="img-purpose" value="Visual Iklan &amp; Poster Kampanye" class="bim-input" />
                     </div>
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label class="bim-label">Palet Warna Dominan</label>
-                      <input type="text" id="img-color" value="#14532D Deep Green &amp; #F4B942 Gold" class="bim-input" />
+                      <input type="text" id="img-color" value="#14532D Deep Emerald Green &amp; #F4B942 Warm Gold" class="bim-input" />
                     </div>
                     <div>
                       <label class="bim-label">Negative Prompt</label>
-                      <input type="text" id="img-neg" value="blurry, watermark, distorted text, low resolution" class="bim-input" />
+                      <input type="text" id="img-neg" value="blurry, watermark, distorted text, low resolution, ugly" class="bim-input" />
                     </div>
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label class="bim-label">Komposisi</label>
-                      <input type="text" id="img-comp" value="Center Hero Podium" class="bim-input" />
+                      <input type="text" id="img-comp" value="Center Hero Focus" class="bim-input" />
                     </div>
                     <div>
                       <label class="bim-label">Pencahayaan</label>
-                      <input type="text" id="img-light" value="Soft Rim Gold" class="bim-input" />
+                      <input type="text" id="img-light" value="Warm Golden Rim Lighting" class="bim-input" />
                     </div>
                     <div>
                       <label class="bim-label">Sudut Kamera</label>
-                      <input type="text" id="img-cam" value="Eye-Level 85mm" class="bim-input" />
+                      <input type="text" id="img-cam" value="Eye-Level 85mm Lens" class="bim-input" />
                     </div>
                   </div>
 
                   <div>
                     <label class="bim-label">Upload Foto Referensi / Produk (Opsional)</label>
-                    <input type="file" accept="image/*" />
+                    <input type="file" accept="image/*" onchange="handleAiStudioRefImageUpload(this)" class="bim-input text-xs py-1.5" />
                   </div>
                 </div>
               </details>
 
-              <button type="submit" class="w-full py-3 px-4 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold flex items-center justify-center gap-2 shadow-md transition">
+              <button type="submit" id="img-gen-submit-btn" class="w-full py-3 px-4 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold flex items-center justify-center gap-2 shadow-md transition">
                 <i data-lucide="sparkles" class="w-4 h-4 text-[#F4B942]"></i>
-                <span>Generate / Komposisi Visual Sekarang</span>
+                <span>Generate / Buat Gambar AI Sekarang</span>
               </button>
             </form>
           </div>
@@ -8122,17 +8388,17 @@
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 class="text-sm font-bold text-slate-900 dark:text-white">Preview Hasil &amp; Side-by-Side Comparison</h3>
-                  <p class="text-[11px] text-slate-500">Rasio: <strong>${escapeHtml(selected.aspectRatio)} (${escapeHtml(selected.targetResolution)})</strong> • Kualitas: <strong>${escapeHtml(selected.quality)}</strong></p>
+                  <p class="text-[11px] text-slate-500">Rasio: <strong>${escapeHtml(selected.aspectRatio)} (${escapeHtml(selected.targetResolution)})</strong> • Engine: <strong>${escapeHtml(selected.providerUsed || 'AI Visual Generator')}</strong></p>
                 </div>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" onclick="toggleImageCompareMode()" class="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-semibold">
-                    ${APP_STATE.aiCompareMode ? 'Tampilan Tunggal' : 'Bandingkan Asli vs Edit Berdampingan'}
+                    ${APP_STATE.aiCompareMode ? 'Tampilan Tunggal' : 'Bandingkan Asli vs AI'}
                   </button>
                   <button type="button" onclick="openLightbox('${escapeHtml(selected.mainObject)}', '${selected.imageUrl}')" class="px-3 py-1.5 rounded-xl bg-[#172554] text-white text-xs font-semibold">Perbesar (Zoom)</button>
-                  <a href="${selected.imageUrl}" download="BIM_Studio_${selected.id}.jpg" class="px-3 py-1.5 rounded-xl bg-[#14532D] text-white text-xs font-semibold inline-flex items-center gap-1">
+                  <button type="button" onclick="downloadAiStudioImage('${selected.id}')" class="px-3 py-1.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-semibold inline-flex items-center gap-1">
                     <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                    <span>Unduh</span>
-                  </a>
+                    <span>Unduh Gambar</span>
+                  </button>
                   <button type="button" onclick="saveAiImageToMediaLibrary('${selected.id}')" class="px-3 py-1.5 rounded-xl bim-badge-gold text-xs font-bold">Simpan ke Media Library</button>
                 </div>
               </div>
@@ -8141,21 +8407,24 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-2xl">
                   <div class="space-y-1.5">
                     <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">GAMBAR REFERENSI AWAL</span>
-                    <img src="${STUDIO_IMG_PRODUCT}" alt="Original" class="w-full h-64 object-cover rounded-xl border border-slate-800" />
+                    <img src="${APP_STATE.aiStudioRefImgDataUrl || STUDIO_IMG_PRODUCT}" alt="Original" class="w-full h-64 object-cover rounded-xl border border-slate-800" />
                   </div>
                   <div class="space-y-1.5">
-                    <span class="px-2 py-0.5 rounded bg-emerald-700 text-white text-[10px] font-bold">HASIL GENERASI / EDIT AI</span>
-                    <img src="${selected.imageUrl}" alt="Edited" class="w-full h-64 object-cover rounded-xl border border-emerald-500/50" />
+                    <span class="px-2 py-0.5 rounded bg-emerald-700 text-white text-[10px] font-bold">HASIL GENERASI AI</span>
+                    <img src="${selected.imageUrl}" onerror="handleAiImageFallback(this, '${selected.id}')" alt="Edited" class="w-full h-64 object-cover rounded-xl border border-emerald-500/50" />
                   </div>
                 </div>
               ` : `
-                <div class="bg-slate-950 p-4 rounded-2xl flex items-center justify-center">
-                  <img src="${selected.imageUrl}" alt="${escapeHtml(selected.mainObject)}" class="max-h-80 max-w-full h-auto rounded-xl object-contain shadow-lg" />
+                <div id="img-studio-preview-box" class="relative bg-slate-950 p-4 rounded-2xl flex items-center justify-center min-h-[280px]">
+                  <img id="img-studio-main-preview" src="${selected.imageUrl}" onerror="handleAiImageFallback(this, '${selected.id}')" alt="${escapeHtml(selected.mainObject)}" class="max-h-96 max-w-full h-auto rounded-xl object-contain shadow-lg" />
                 </div>
               `}
 
-              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 text-xs">
-                <div class="font-bold text-slate-700 dark:text-slate-300 mb-1">Prompt yang Digunakan:</div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 text-xs space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-700 dark:text-slate-300">Prompt yang Digunakan:</span>
+                  <span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">${escapeHtml(selected.createdAt || '')}</span>
+                </div>
                 <div class="text-slate-600 dark:text-slate-400">${escapeHtml(selected.prompt)}</div>
               </div>
             </div>
@@ -8163,17 +8432,23 @@
             <!-- Generation History Gallery -->
             <div class="bim-card p-4">
               <div class="text-xs font-bold text-slate-900 dark:text-white mb-3">Riwayat Prompt &amp; Galeri Proyek (${gens.length})</div>
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                ${gens.map(g => `
-                  <div onclick="selectAiGeneratedImage('${g.id}')" class="cursor-pointer rounded-xl overflow-hidden border-2 transition ${g.id === selected.id ? 'border-[#16A34A]' : 'border-transparent hover:border-slate-400'} bg-slate-900">
-                    <img src="${g.imageUrl}" alt="${escapeHtml(g.mainObject)}" class="w-full h-24 object-cover" />
-                    <div class="p-2 text-[10px] text-white">
-                      <div class="font-bold truncate">${escapeHtml(g.mainObject)}</div>
-                      <div class="text-slate-400">${escapeHtml(g.aspectRatio)} • ${escapeHtml(g.quality)}</div>
+              ${gens.length === 0 ? `
+                <div class="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+                  Belum ada gambar yang digenerate. Ketik deskripsi gambar di sebelah kiri lalu klik <strong>Generate / Buat Gambar AI Sekarang</strong>.
+                </div>
+              ` : `
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  ${gens.map(g => `
+                    <div onclick="selectAiGeneratedImage('${g.id}')" class="cursor-pointer rounded-xl overflow-hidden border-2 transition ${g.id === selected.id ? 'border-[#16A34A]' : 'border-transparent hover:border-slate-400'} bg-slate-900">
+                      <img src="${g.imageUrl}" onerror="handleAiImageFallback(this, '${g.id}')" alt="${escapeHtml(g.mainObject)}" class="w-full h-24 object-cover" />
+                      <div class="p-2 text-[10px] text-white">
+                        <div class="font-bold truncate">${escapeHtml(g.mainObject)}</div>
+                        <div class="text-slate-400">${escapeHtml(g.aspectRatio)} • ${escapeHtml(g.quality)}</div>
+                      </div>
                     </div>
-                  </div>
-                `).join('')}
-              </div>
+                  `).join('')}
+                </div>
+              `}
             </div>
           </div>
         </div>
@@ -8182,6 +8457,7 @@
 
     function selectAiGeneratedImage(id) {
       APP_STATE.aiSelectedImageId = id;
+      APP_STATE.aiPendingImagePrompt = '';
       renderAIStudio();
     }
 
@@ -8190,16 +8466,324 @@
       renderAIStudio();
     }
 
-    function handleAiImageGenerateSubmit(e) {
-      e.preventDefault();
+    function handleAiStudioRefImageUpload(inputEl) {
+      const f = inputEl && inputEl.files && inputEl.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        compressUploadedImageDataUrl(String(evt.target.result || ''), 760, 0.82, function(compressed) {
+          APP_STATE.aiStudioRefImgDataUrl = compressed;
+          showToast(`Foto referensi "${f.name}" siap dipadukan ke visual studio.`, 'info');
+        });
+      };
+      reader.readAsDataURL(f);
+    }
+
+    function renderSmartStudioCanvas(canvas, ratio, prompt, mainObj, style, quality) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const text = `${prompt} ${mainObj}`.toLowerCase();
+      const isGold = /emas|tabungan|simpanan|koin|logam|investasi|syariah|bmt|uang|dana/.test(text);
+      const isFood = /kopi|minuman|makanan|kafe|kuliner|botol|teh|susu|roti/.test(text);
+
+      // Background studio gradient tailored to theme
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      if (isGold) {
+        grad.addColorStop(0, '#0F172A');
+        grad.addColorStop(0.55, '#14532D');
+        grad.addColorStop(1, '#422006');
+      } else if (isFood) {
+        grad.addColorStop(0, '#1C1917');
+        grad.addColorStop(0.55, '#292524');
+        grad.addColorStop(1, '#14532D');
+      } else {
+        grad.addColorStop(0, '#0B1220');
+        grad.addColorStop(0.5, '#14532D');
+        grad.addColorStop(1, '#172554');
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Ambient spotlight
+      const rad = ctx.createRadialGradient(w * 0.5, h * 0.42, 20, w * 0.5, h * 0.42, w * 0.46);
+      rad.addColorStop(0, isGold ? 'rgba(250, 204, 21, 0.48)' : 'rgba(244, 185, 66, 0.36)');
+      rad.addColorStop(1, 'rgba(244, 185, 66, 0)');
+      ctx.fillStyle = rad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Decorative light grid lines
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 6; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, (h / 6) * i);
+        ctx.lineTo(w, (h / 6) * i);
+        ctx.stroke();
+      }
+
+      // Podium base
+      ctx.fillStyle = '#0F172A';
+      ctx.strokeStyle = '#F4B942';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(w * 0.18, h * 0.67, w * 0.64, 48, 14);
+      ctx.fill();
+      ctx.stroke();
+
+      if (isGold) {
+        // Draw 3D Gold Bullion Bars & Coins for Gold/Savings theme
+        const barGrad = ctx.createLinearGradient(w * 0.30, h * 0.25, w * 0.70, h * 0.65);
+        barGrad.addColorStop(0, '#FEF08A');
+        barGrad.addColorStop(0.45, '#FACC15');
+        barGrad.addColorStop(1, '#CA8A04');
+        ctx.fillStyle = barGrad;
+        ctx.strokeStyle = '#FEF9C3';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.roundRect(w * 0.31, h * 0.24, w * 0.38, h * 0.42, 20);
+        ctx.fill();
+        ctx.stroke();
+
+        // Inner emboss stamp on gold bar
+        ctx.strokeStyle = '#854D0E';
+        ctx.beginPath();
+        ctx.roundRect(w * 0.35, h * 0.29, w * 0.30, h * 0.32, 12);
+        ctx.stroke();
+        ctx.fillStyle = '#713F12';
+        ctx.font = 'extrabold 22px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('FINE GOLD', w * 0.5, h * 0.43);
+        ctx.font = 'bold 16px Inter, sans-serif';
+        ctx.fillText('999.9 • 24K', w * 0.5, h * 0.49);
+      } else {
+        // Modern Campaign Visual Card
+        const heroGrad = ctx.createLinearGradient(0, h * 0.22, 0, h * 0.66);
+        heroGrad.addColorStop(0, '#16A34A');
+        heroGrad.addColorStop(1, '#14532D');
+        ctx.fillStyle = heroGrad;
+        ctx.strokeStyle = '#F4B942';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(w * 0.28, h * 0.22, w * 0.44, h * 0.44, 22);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#F4B942';
+        ctx.fillRect(w * 0.28, h * 0.30, w * 0.44, 14);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 18px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(mainObj.slice(0, 24).toUpperCase(), w * 0.5, h * 0.48);
+      }
+
+      // Bottom Title & Spec Banner
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 21px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText((mainObj || prompt).slice(0, 36), w * 0.5, h * 0.80);
+      ctx.fillStyle = '#F4B942';
+      ctx.font = '600 13px Inter, sans-serif';
+      ctx.fillText(`${style} • Rasio ${ratio} • ${quality}`, w * 0.5, h * 0.86);
+      ctx.fillStyle = 'rgba(255,255,255,0.72)';
+      ctx.font = '500 12px Inter, sans-serif';
+      ctx.fillText(prompt.slice(0, 68) + (prompt.length > 68 ? '...' : ''), w * 0.5, h * 0.92);
+    }
+
+    function translateIdToEnVisualPrompt(rawText) {
+      let t = String(rawText || '');
+      const dict = [
+        [/fotografi komersial profesional/gi, 'professional commercial photography of'],
+        [/tabungan emas|simpanan tabungan emas|simpanan emas/gi, '24K fine gold bullion bars and shiny gold coins savings'],
+        [/emas batangan/gi, '24K gold bullion bars'],
+        [/koin emas/gi, 'shiny gold coins'],
+        [/berkilau/gi, 'gleaming and sparkling'],
+        [/di atas meja kayu elegan/gi, 'on an elegant dark wooden executive table'],
+        [/podium marmer hijau zamrud/gi, 'deep emerald green marble podium'],
+        [/hijau zamrud/gi, 'deep emerald green'],
+        [/pencahayaan studio hangat/gi, 'warm cinematic studio rim lighting'],
+        [/suasana pelayanan ramah/gi, 'warm friendly customer service scene'],
+        [/staf bank syariah berhijab/gi, 'professional Indonesian Islamic banking staff wearing neat hijab'],
+        [/melayani nasabah keluarga muda/gi, 'assisting a happy young Indonesian family client'],
+        [/kantor cabang modern/gi, 'modern corporate branch office interior'],
+        [/koperasi syariah|bmt syariah|perbankan syariah/gi, 'modern Indonesian Islamic financial cooperative lounge'],
+        [/deposito|investasi|keuangan/gi, 'wealth management and financial growth concept'],
+        [/kopi|minuman kafe/gi, 'artisan iced coffee drink in minimalist cafe'],
+        [/makanan|kuliner/gi, 'gourmet culinary food photography'],
+        [/mewah/gi, 'luxury high-end aesthetic']
+      ];
+      dict.forEach(([regex, rep]) => {
+        t = t.replace(regex, rep);
+      });
+      return t;
+    }
+
+    async function buildRichEnglishImagePrompt(prompt, mainObj, style, color, comp, light, cam) {
+      const translatedBase = translateIdToEnVisualPrompt(prompt);
+      const translatedObj = translateIdToEnVisualPrompt(mainObj);
+      let richPrompt = `${style} of ${translatedBase}. Subject focus: ${translatedObj}. Color palette: ${color || 'deep emerald green and warm gold'}. Composition: ${comp || 'center hero focus'}. Lighting: ${light || 'warm studio rim lighting'}. Camera: ${cam || '85mm f/1.8 lens'}, ultra-detailed, photorealistic, 8k resolution, clean commercial visual, no text watermark`;
+
+      if (isGeminiReady()) {
+        try {
+          const aiRes = await Promise.race([
+            callGeminiJson(
+              `Translate and expand this Indonesian/English visual request into a vivid, highly detailed English text-to-image diffusion prompt (max 65 words, photography/illustration details only, no markdown):\n- Prompt: "${prompt}"\n- Main Subject: "${mainObj}"\n- Style: "${style}"\n- Colors: "${color}"\n- Lighting: "${light}"\n- Camera: "${cam}"\nReturn exact JSON: {"englishPrompt":"..."}`
+            ),
+            new Promise(resolve => setTimeout(() => resolve(null), 5000))
+          ]);
+          if (aiRes && aiRes.englishPrompt && String(aiRes.englishPrompt).trim().length > 15) {
+            richPrompt = String(aiRes.englishPrompt).trim();
+          }
+        } catch (_) {}
+      }
+      return richPrompt;
+    }
+
+    async function tryGenerateGeminiImagen(promptText, aspectRatio) {
+      if (!isGeminiReady()) return null;
+      const key = getGeminiApiKey();
+      if (!key) return null;
+
+      // 1. Try Gemini 2.0 Flash Image Generation via :generateContent
+      const genModels = [
+        'gemini-2.0-flash-exp-image-generation',
+        'gemini-2.0-flash-preview-image-generation'
+      ];
+      for (const mName of genModels) {
+        try {
+          const gRes = await fetch(`${GEMINI_API_BASE}${mName}:generateContent?key=${encodeURIComponent(key)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `Generate a high quality visual image (${aspectRatio} aspect ratio): ${promptText}` }] }],
+              generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+            })
+          });
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const parts = (((gData.candidates || [])[0] || {}).content || {}).parts || [];
+            const imgPart = parts.find(p => p.inlineData && p.inlineData.data);
+            if (imgPart) {
+              const mime = imgPart.inlineData.mimeType || 'image/png';
+              return `data:${mime};base64,${imgPart.inlineData.data}`;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Try Imagen 3 :predict endpoint
+      const validRatio = ['1:1', '3:4', '4:3', '9:16', '16:9'].includes(aspectRatio) ? aspectRatio : '1:1';
+      try {
+        const res = await fetch(`${GEMINI_API_BASE}imagen-3.0-generate-002:predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            instances: [{ prompt: promptText }],
+            parameters: { sampleCount: 1, aspectRatio: validRatio }
+          })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const b64 = data && data.predictions && data.predictions[0] && data.predictions[0].bytesBase64Encoded;
+        return b64 ? `data:image/png;base64,${b64}` : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function preloadAiImageUrl(url, timeoutMs) {
+      return new Promise(resolve => {
+        const img = new Image();
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            resolve(false);
+          }
+        }, timeoutMs || 22000);
+        img.onload = () => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(true);
+          }
+        };
+        img.onerror = () => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(false);
+          }
+        };
+        img.src = url;
+      });
+    }
+
+    function handleAiImageFallback(imgEl, genId) {
+      if (!imgEl || imgEl.dataset.fallbackApplied === '1') return;
+      imgEl.dataset.fallbackApplied = '1';
+      const g = DB.imageGenerations.find(x => x.id === genId) || {};
+      const ratio = g.aspectRatio || '1:1';
+      const canvas = document.createElement('canvas');
+      canvas.width = ratio === '16:9' ? 960 : 720;
+      canvas.height = ratio === '9:16' ? 960 : (ratio === '16:9' ? 540 : 720);
+      renderSmartStudioCanvas(canvas, ratio, g.prompt || 'Visual Studio AI', g.mainObject || 'Visual AI', g.style || 'Commercial Advertising', g.quality || 'High Quality');
+      imgEl.src = canvas.toDataURL('image/png');
+    }
+
+    async function downloadAiStudioImage(genId) {
+      const g = DB.imageGenerations.find(x => x.id === genId) || {
+        id: genId || 'preview',
+        mainObject: 'BIM_Studio_Visual',
+        imageUrl: (document.getElementById('img-studio-main-preview') || {}).src || STUDIO_IMG_PRODUCT
+      };
+      const fileName = `BIM_AI_${String(g.mainObject || 'Visual').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 28)}_${g.id}.jpg`;
+      try {
+        if (String(g.imageUrl).startsWith('data:')) {
+          const a = document.createElement('a');
+          a.href = g.imageUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          showToast('Gambar berhasil diunduh!', 'success');
+          return;
+        }
+        showToast('Menyiapkan file gambar untuk diunduh...', 'info');
+        const res = await fetch(g.imageUrl);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+        showToast('Gambar AI berhasil diunduh!', 'success');
+      } catch (_) {
+        window.open(g.imageUrl, '_blank');
+      }
+    }
+
+    async function handleAiImageGenerateSubmit(e) {
+      if (e && e.preventDefault) e.preventDefault();
       if (!consumeAiQuota(5)) return;
 
       const ratio = document.getElementById('img-ratio').value;
       const quality = document.getElementById('img-quality').value;
       const prompt = document.getElementById('img-prompt').value.trim();
-      const mainObj = document.getElementById('img-obj').value.trim();
+      const rawObj = document.getElementById('img-obj').value.trim();
+      const mainObj = (!rawObj || /BIM Executive Tumbler|Simpanan Tabungan Emas & Layanan Cabang/i.test(rawObj))
+        ? prompt.slice(0, 38)
+        : rawObj;
       const style = document.getElementById('img-style').value;
       const color = document.getElementById('img-color').value.trim();
+      const comp = document.getElementById('img-comp').value.trim();
+      const light = document.getElementById('img-light').value.trim();
+      const cam = document.getElementById('img-cam').value.trim();
+      const negPrompt = document.getElementById('img-neg').value.trim();
+      const purpose = document.getElementById('img-purpose').value.trim();
 
       const resMap = {
         '1:1': '1024 × 1024',
@@ -8210,77 +8794,85 @@
         '3:2': '1536 × 1024',
         '2:3': '1024 × 1536'
       };
+      const dimMap = {
+        '1:1': { w: 1024, h: 1024 },
+        '4:5': { w: 1024, h: 1280 },
+        '3:4': { w: 960, h: 1280 },
+        '9:16': { w: 768, h: 1344 },
+        '16:9': { w: 1344, h: 768 },
+        '3:2': { w: 1280, h: 854 },
+        '2:3': { w: 854, h: 1280 }
+      };
+      const dim = dimMap[ratio] || { w: 1024, h: 1024 };
 
-      // Render a crisp procedural studio composition onto an offscreen canvas combining the studio base + lighting accents
-      const canvas = document.createElement('canvas');
-      canvas.width = ratio === '16:9' ? 960 : 720;
-      canvas.height = ratio === '9:16' ? 960 : (ratio === '16:9' ? 540 : 720);
-      const ctx = canvas.getContext('2d');
-      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-      grad.addColorStop(0, '#0B1220');
-      grad.addColorStop(0.5, '#14532D');
-      grad.addColorStop(1, '#172554');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Show immediate active loading state on button & preview box
+      const submitBtn = document.getElementById('img-gen-submit-btn');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-[#F4B942]"></i><span>Sedang Membuat Gambar AI Real-Time...</span>`;
+        if (window.lucide) lucide.createIcons();
+      }
+      const previewBox = document.getElementById('img-studio-preview-box');
+      if (previewBox) {
+        previewBox.innerHTML = `
+          <div class="py-16 px-6 text-center space-y-3 text-white">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mx-auto animate-pulse">
+              <i data-lucide="sparkles" class="w-6 h-6 text-[#F4B942]"></i>
+            </div>
+            <div class="text-sm font-bold">Sedang Merender Visual AI...</div>
+            <div class="text-xs text-slate-400 max-w-md mx-auto">Menyusun komposisi "${escapeHtml(mainObj)}" (${ratio} • ${resMap[ratio]}). Mohon tunggu sekitar 4–8 detik...</div>
+          </div>
+        `;
+        if (window.lucide) lucide.createIcons();
+      }
+      showToast('Sedang membuat gambar AI sesuai deskripsi Anda...', 'info');
 
-      // Ambient gold rim circle
-      const rad = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.45, 20, canvas.width * 0.5, canvas.height * 0.45, canvas.width * 0.42);
-      rad.addColorStop(0, 'rgba(244, 185, 66, 0.38)');
-      rad.addColorStop(1, 'rgba(244, 185, 66, 0)');
-      ctx.fillStyle = rad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // 1. Build rich English visual prompt (using Gemini if connected, or local dictionary)
+      const englishPrompt = await buildRichEnglishImagePrompt(prompt, mainObj, style, color, comp, light, cam);
 
-      // Sleek geometric product podium & object silhouette
-      ctx.fillStyle = '#111C2E';
-      ctx.strokeStyle = '#F4B942';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(canvas.width * 0.22, canvas.height * 0.68, canvas.width * 0.56, 46, 12);
-      ctx.fill();
-      ctx.stroke();
+      // 2. Try Gemini Native Image Generation first
+      let finalImageUrl = await tryGenerateGeminiImagen(englishPrompt, ratio);
+      let providerLabel = 'Google Gemini / Imagen AI';
 
-      // Studio cylinder / hero card
-      const heroGrad = ctx.createLinearGradient(0, canvas.height * 0.24, 0, canvas.height * 0.68);
-      heroGrad.addColorStop(0, '#16A34A');
-      heroGrad.addColorStop(1, '#14532D');
-      ctx.fillStyle = heroGrad;
-      ctx.beginPath();
-      ctx.roundRect(canvas.width * 0.36, canvas.height * 0.24, canvas.width * 0.28, canvas.height * 0.44, 24);
-      ctx.fill();
-      ctx.stroke();
+      // 3. If Gemini Image endpoint isn't enabled on this key, use Real AI Flux Diffusion Generator
+      if (!finalImageUrl) {
+        const seed = Math.floor(100000 + Math.random() * 900000);
+        const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(englishPrompt)}?width=${dim.w}&height=${dim.h}&seed=${seed}&nologo=true&model=flux`;
+        const loadedOk = await preloadAiImageUrl(fluxUrl, 20000);
+        if (loadedOk) {
+          finalImageUrl = fluxUrl;
+          providerLabel = isGeminiReady() ? 'Gemini Prompt + Flux AI Visual' : 'Flux AI Text-to-Image Engine';
+        } else {
+          // Offline fallback to Smart Studio Canvas
+          const canvas = document.createElement('canvas');
+          canvas.width = ratio === '16:9' ? 960 : 720;
+          canvas.height = ratio === '9:16' ? 960 : (ratio === '16:9' ? 540 : 720);
+          renderSmartStudioCanvas(canvas, ratio, prompt, mainObj, style, quality);
+          finalImageUrl = canvas.toDataURL('image/png');
+          providerLabel = 'BIM Smart Studio Offline Compositor';
+        }
+      }
 
-      // Gold collar band
-      ctx.fillStyle = '#F4B942';
-      ctx.fillRect(canvas.width * 0.36, canvas.height * 0.30, canvas.width * 0.28, 16);
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 20px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(mainObj.slice(0, 32), canvas.width * 0.5, canvas.height * 0.82);
-      ctx.fillStyle = '#F4B942';
-      ctx.font = '600 13px Inter, sans-serif';
-      ctx.fillText(`${style} • Rasio ${ratio} (${resMap[ratio] || '1024x1024'}) • ${quality}`, canvas.width * 0.5, canvas.height * 0.87);
-
-      const dataUrl = canvas.toDataURL('image/png');
       const newGen = {
         id: 'img_gen_' + Date.now(),
         userId: getCurrentUser().id,
         userName: getCurrentUser().fullName,
         prompt,
-        negativePrompt: document.getElementById('img-neg').value.trim(),
-        purpose: document.getElementById('img-purpose').value.trim(),
+        englishPromptUsed: englishPrompt,
+        negativePrompt: negPrompt,
+        purpose,
         mainObject: mainObj,
         style,
         colors: color,
-        composition: document.getElementById('img-comp').value.trim(),
-        background: 'Studio Custom Backdrop',
-        lighting: document.getElementById('img-light').value.trim(),
-        cameraAngle: document.getElementById('img-cam').value.trim(),
+        composition: comp,
+        background: 'AI Studio Custom Scene',
+        lighting: light,
+        cameraAngle: cam,
         aspectRatio: ratio,
         targetResolution: resMap[ratio] || '1024 × 1024',
         quality,
-        providerUsed: DB.appSettings.aiConfig.apiConnected ? DB.appSettings.aiConfig.imageModel : 'BIM Studio Compositor (Sandbox Mode)',
-        imageUrl: dataUrl,
+        providerUsed: providerLabel,
+        imageUrl: finalImageUrl,
         createdAt: getNowWIB(),
         isDemo: false
       };
@@ -8288,11 +8880,12 @@
       DB.imageGenerations.unshift(newGen);
       DB.appSettings.aiConfig.totalImagesGenerated += 1;
       APP_STATE.aiSelectedImageId = newGen.id;
-      logAudit('AI Image Studio', 'GENERATE_IMAGE', newGen.id, `Membuat visual "${mainObj}" (${ratio}, ${quality})`);
-      pushNotification('Sistem & AI', 'Visual AI Berhasil Dibuat', `Gambar "${mainObj}" (${ratio}) siap diunduh atau disimpan ke Media Library.`, 'ai_studio', ['MASTER', 'USER']);
+      APP_STATE.aiPendingImagePrompt = '';
+      logAudit('AI Image Studio', 'GENERATE_IMAGE', newGen.id, `Membuat visual AI "${mainObj}" (${ratio}, ${quality}) via ${providerLabel}`);
+      pushNotification('Sistem & AI', 'Visual AI Berhasil Dibuat', `Gambar "${mainObj}" (${ratio}) selesai dibuat dengan ${providerLabel}.`, 'ai_studio', ['MASTER', 'USER']);
       saveDatabase();
       renderAIStudio();
-      showToast(`Visual "${mainObj}" (${resMap[ratio]}) berhasil dibuat!`, 'success');
+      showToast(`Gambar AI "${mainObj}" (${resMap[ratio]}) berhasil dibuat!`, 'success');
     }
 
     function saveAiImageToMediaLibrary(genId) {
@@ -8413,8 +9006,8 @@
       `;
     }
 
-    function runAiPromptBuilderSubmit(e) {
-      e.preventDefault();
+    async function runAiPromptBuilderSubmit(e) {
+      if (e && e.preventDefault) e.preventDefault();
       const idea = document.getElementById('prb-idea').value.trim();
       const mode = document.getElementById('prb-mode').value;
       const ratio = document.getElementById('prb-ratio').value;
@@ -8425,25 +9018,49 @@
         rawIdea: idea,
         mode,
         missingClarification: needsClarification
-          ? 'Perhatian: Ide awal cukup singkat. AI menambahkan rekomendasi pencahayaan Studio Rim Gold dan latar belakang korporat minimalis. Anda dapat memperjelas warna spesifik atau sudut kamera pada editor di bawah.'
-          : `Seluruh komponen kunci teridentifikasi: Mode (${mode}), Subjek Utama, Palet Brand (#14532D & #F4B942), dan Rasio (${ratio}).`,
-        finalImagePrompt: `${mode} style: ${idea}, corporate palette deep emerald green (#14532D), navy (#172554) and warm gold accent (#F4B942), crisp studio lighting, aspect ratio ${ratio}, ultra-detailed, clean composition, text-free, no watermarks.`,
-        finalVideoPrompt: `Cinematic video sequence (${vidP}): ${idea}, consistent lighting and color grading, smooth camera transition, ambient studio soundscape.`,
+          ? 'Perhatian: Ide awal cukup singkat. Sistem telah melengkapi pencahayaan Studio Rim Gold, komposisi fokus subjek, dan palet warna brand. Anda dapat menyempurnakannya di bawah.'
+          : `Seluruh komponen kunci teridentifikasi: Mode (${mode}), Subjek Utama (${idea.slice(0, 40)}), Palet Brand (#14532D & #F4B942), dan Rasio (${ratio}).`,
+        finalImagePrompt: `${mode} style: ${idea}, Indonesian professional commercial aesthetic, brand color accents deep emerald green (#14532D) and warm gold (#F4B942), crisp studio lighting, aspect ratio ${ratio}, ultra-detailed, clean composition, text-free, no watermarks.`,
+        finalVideoPrompt: `Cinematic video sequence (${vidP}): ${idea}, consistent warm lighting and color grading, smooth camera transition, ambient studio soundscape.`,
         negativePrompt: 'blurry, lowres, watermark, oversaturated, text overlay, deformed object'
       };
       renderAIStudio();
+
+      if (isGeminiReady()) {
+        showToast('Menyusun prompt profesional dengan Google Gemini...', 'info');
+        try {
+          const aiPrb = await callGeminiJson(
+            `Kembangkan ide visual singkat ini menjadi prompt gambar & video profesional:\n- Ide Awal: "${idea}"\n- Mode: ${mode}\n- Rasio: ${ratio}\n- Parameter Kamera Video: ${vidP}\n\nKembalikan JSON dengan struktur persis:\n{"missingClarification":"analisis singkat apakah ide sudah jelas dan elemen apa yang ditambahkan (Bahasa Indonesia)","finalImagePrompt":"prompt text-to-image detail dalam Bahasa Inggris sesuai ide di atas","finalVideoPrompt":"prompt text-to-video detail dalam Bahasa Inggris sesuai ide di atas","negativePrompt":"negative prompt bahasa inggris"}`
+          );
+          if (aiPrb && aiPrb.finalImagePrompt) {
+            Object.assign(APP_STATE.aiLastPromptResult, {
+              missingClarification: aiPrb.missingClarification || APP_STATE.aiLastPromptResult.missingClarification,
+              finalImagePrompt: aiPrb.finalImagePrompt,
+              finalVideoPrompt: aiPrb.finalVideoPrompt || APP_STATE.aiLastPromptResult.finalVideoPrompt,
+              negativePrompt: aiPrb.negativePrompt || APP_STATE.aiLastPromptResult.negativePrompt
+            });
+            renderAIStudio();
+            showToast('Prompt profesional berhasil disusun oleh Google Gemini!', 'success');
+            return;
+          }
+        } catch (err) {
+          console.warn('Gemini prompt builder fallback:', err);
+        }
+      }
       showToast('Prompt profesional berhasil disusun!', 'success');
     }
 
     function sendPromptToImageStudio() {
       const editedPrompt = (document.getElementById('prb-final-img') || {}).value || '';
+      const ratioVal = (document.getElementById('prb-ratio') || {}).value || '1:1';
+      if (editedPrompt) APP_STATE.aiPendingImagePrompt = editedPrompt;
       APP_STATE.aiActiveTab = 'image';
       renderAIStudio();
       const imgPromptEl = document.getElementById('img-prompt');
-      if (imgPromptEl && editedPrompt) {
-        imgPromptEl.value = editedPrompt;
-      }
-      showToast('Prompt telah dikirim ke AI Image Studio dan siap digenerate!', 'success');
+      if (imgPromptEl && editedPrompt) imgPromptEl.value = editedPrompt;
+      const imgRatioEl = document.getElementById('img-ratio');
+      if (imgRatioEl && ratioVal) imgRatioEl.value = ratioVal;
+      showToast('Prompt telah dikirim ke AI Image Studio! Klik "Generate / Buat Gambar AI Sekarang".', 'success');
     }
 
     // -------------------------------------------------------------------------
@@ -8536,12 +9153,13 @@
       `;
     }
 
-    function runAiBrandGuardSubmit(e) {
-      e.preventDefault();
+    async function runAiBrandGuardSubmit(e) {
+      if (e && e.preventDefault) e.preventDefault();
       const copy = document.getElementById('brg-copy').value.trim();
       const colors = document.getElementById('brg-colors').value.trim();
       const font = document.getElementById('brg-font').value.trim();
       const bg = DB.appSettings.brandGuideline;
+      const activeCtx = getActiveBrandProductContext();
 
       let score = 100;
       const findings = [];
@@ -8555,17 +9173,21 @@
         findings.push({ aspect: 'Klaim Pemasaran', status: 'Sesuai', detail: 'Tidak ditemukan klaim hiperbolis terlarang.' });
       }
 
-      // Check official product name
-      const hasOfficialProd = bg.officialProductNames.some(p => copy.toLowerCase().includes(p.toLowerCase()));
+      // Check official product name OR active product context name
+      const validProducts = [...(bg.officialProductNames || [])];
+      if (activeCtx && activeCtx.productName && !validProducts.includes(activeCtx.productName)) {
+        validProducts.push(activeCtx.productName);
+      }
+      const hasOfficialProd = validProducts.some(p => copy.toLowerCase().includes(p.toLowerCase()));
       if (!hasOfficialProd) {
         score -= 15;
-        findings.push({ aspect: 'Penulisan Nama Produk', status: 'Perlu Koreksi', detail: `Sebaiknya gunakan nama produk resmi lengkap: ${bg.officialProductNames.join(' / ')}.` });
+        findings.push({ aspect: 'Penulisan Nama Produk / Layanan', status: 'Perlu Koreksi', detail: `Sebaiknya cantumkan nama produk/layanan aktif secara jelas (${(activeCtx && activeCtx.productName) || validProducts.join(' / ')}).` });
       } else {
-        findings.push({ aspect: 'Penulisan Nama Produk', status: 'Sesuai', detail: 'Penulisan nama produk sudah sesuai katalog resmi.' });
+        findings.push({ aspect: 'Penulisan Nama Produk / Layanan', status: 'Sesuai', detail: 'Penulisan nama produk/layanan sudah jelas dan sesuai konteks aktif.' });
       }
 
       // Check mandatory CTA
-      if (!copy.toLowerCase().includes('hubungi cabang resmi bim')) {
+      if (!copy.toLowerCase().includes('hubungi cabang resmi bim') && !copy.toLowerCase().includes((bg.mandatoryCta || '').toLowerCase().slice(0, 15))) {
         score -= 15;
         findings.push({ aspect: 'CTA Wajib', status: 'Perlu Koreksi', detail: `Tambahkan CTA standar: "${bg.mandatoryCta}".` });
       } else {
@@ -8583,10 +9205,10 @@
 
       let cleanCopy = copy;
       bg.forbiddenWords.forEach(w => {
-        cleanCopy = cleanCopy.replace(new RegExp(w, 'gi'), 'berkualitas teruji');
+        cleanCopy = cleanCopy.replace(new RegExp(w, 'gi'), 'terpercaya dan aman');
       });
       if (!cleanCopy.toLowerCase().includes('hubungi cabang resmi bim')) {
-        cleanCopy += ' ' + bg.mandatoryCta + '.';
+        cleanCopy = cleanCopy.replace(/\.*$/, '.') + ' ' + bg.mandatoryCta + '.';
       }
 
       APP_STATE.aiLastBrandGuardResult = {
@@ -8598,6 +9220,18 @@
         recommendedCopy: cleanCopy
       };
       renderAIStudio();
+
+      if (isGeminiReady()) {
+        try {
+          const aiBrg = await callGeminiJson(
+            `Perbaiki draf teks promosi ini agar profesional, hangat, bebas klaim berlebihan (${bg.forbiddenWords.join(', ')}), dan diakhiri dengan CTA "${bg.mandatoryCta}":\nDraf asli: "${copy}"\n\nKembalikan JSON dengan struktur persis:\n{"recommendedCopy":"teks hasil perbaikan yang halus dan siap tayang"}`
+          );
+          if (aiBrg && aiBrg.recommendedCopy) {
+            APP_STATE.aiLastBrandGuardResult.recommendedCopy = aiBrg.recommendedCopy;
+            renderAIStudio();
+          }
+        } catch (_) {}
+      }
       showToast(`Pemeriksaan AI Brand Guard selesai (Skor: ${Math.max(10, score)}/100).`, 'info');
     }
 
@@ -8825,11 +9459,13 @@
     // =========================================================================
     function buildDesignOrderQueueHtml(orders, user) {
       const canManageStatus = user.role === 'MASTER' || (user.role === 'USER' && checkPermission('design_order', 'edit'));
+      // Tamu cabang hanya melihat daftar pesanannya sendiri: filter cabang, status & pencarian disembunyikan
+      const isGuest = user.role === 'GUEST';
 
-      const searchQ = (APP_STATE.ordSearchQuery || '').trim().toLowerCase();
+      const searchQ = isGuest ? '' : (APP_STATE.ordSearchQuery || '').trim().toLowerCase();
       const typeF = APP_STATE.ordFilterType || 'ALL';
-      const branchF = APP_STATE.ordFilterBranch || 'ALL';
-      const statusF = APP_STATE.ordFilterStatus || 'UNFINISHED';
+      const branchF = isGuest ? 'ALL' : (APP_STATE.ordFilterBranch || 'ALL');
+      const statusF = isGuest ? 'ALL' : (APP_STATE.ordFilterStatus || 'UNFINISHED');
       const sortBy = APP_STATE.ordSortBy || 'newest';
 
       // Count per status tab before status filtering
@@ -8865,7 +9501,38 @@
 
       // Build Empty State if no orders match
       let contentHtml = '';
-      if (filtered.length === 0) {
+      if (filtered.length === 0 && isGuest) {
+        contentHtml = `
+          <div class="bim-card p-10 text-center space-y-3">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 text-[#16A34A] flex items-center justify-center mx-auto">
+              <i data-lucide="inbox" class="w-6 h-6"></i>
+            </div>
+            <div class="space-y-1">
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">
+                ${orders.length === 0 ? 'Anda Belum Memiliki Pesanan Desain' : 'Tidak Ada Pesanan untuk Jenis Desain Ini'}
+              </h4>
+              <p class="text-xs text-slate-500 max-w-md mx-auto">
+                ${orders.length === 0
+                  ? 'Pesanan ID Card atau Banner yang Anda ajukan akan muncul di sini beserta status pengerjaannya.'
+                  : 'Pilih "Semua Jenis Desain" untuk melihat seluruh pesanan Anda.'}
+              </p>
+            </div>
+            <div class="flex items-center justify-center gap-2 pt-2">
+              ${orders.length > 0 ? `
+                <button type="button" onclick="setOrdQueueFilter('type', 'ALL')" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+                  Semua Jenis Desain
+                </button>
+              ` : ''}
+              <button type="button" onclick="setDesignOrderTab('id_card')" class="px-4 py-2 rounded-xl bg-[#14532D] text-white text-xs font-bold">
+                + Pesan ID Card
+              </button>
+              <button type="button" onclick="setDesignOrderTab('banner')" class="px-4 py-2 rounded-xl bg-[#172554] text-white text-xs font-bold">
+                + Pesan Banner
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (filtered.length === 0) {
         contentHtml = `
           <div class="bim-card p-10 text-center space-y-3">
             <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 text-[#16A34A] flex items-center justify-center mx-auto">
@@ -8963,6 +9630,11 @@
                         </td>
                         <td class="py-3.5 px-4 text-right space-y-1.5 whitespace-nowrap">
                           <div class="flex items-center justify-end gap-1.5">
+                            ${canManageStatus ? `
+                              <button type="button" onclick="openOrderWhatsAppModal('${o.id}')" title="Kabari pemesan via WhatsApp" class="px-2.5 py-1.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366] text-[#128C7E] hover:text-white dark:text-[#25D366] dark:hover:text-white text-[11px] font-bold transition">
+                                WA
+                              </button>
+                            ` : ''}
                             ${canManageStatus && o.status === 'Menunggu' ? `
                               <button type="button" onclick="setOrderStatusWorking('${o.id}')" class="px-2.5 py-1.5 rounded-xl bg-blue-600/15 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white text-[11px] font-bold transition">
                                 Mulai Kerjakan
@@ -9078,6 +9750,12 @@
                     </button>
 
                     <div class="flex items-center gap-1.5">
+                      ${canManageStatus ? `
+                        <button type="button" onclick="openOrderWhatsAppModal('${o.id}')" title="Kabari pemesan via WhatsApp" class="px-2.5 py-1.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366] text-[#128C7E] hover:text-white dark:text-[#25D366] dark:hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
+                          <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                          <span>WA</span>
+                        </button>
+                      ` : ''}
                       ${canManageStatus && o.status === 'Menunggu' ? `
                         <button type="button" onclick="setOrderStatusWorking('${o.id}')" class="px-2.5 py-1.5 rounded-xl bg-blue-600/15 hover:bg-blue-600 text-blue-700 dark:text-blue-300 hover:text-white text-[11px] font-bold transition">
                           Kerjakan
@@ -9104,6 +9782,13 @@
           <!-- Status Filter Tabs (Default highlights Unfinished orders) & Search/Filter Bar -->
           <div class="bim-card p-4 space-y-3.5">
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              ${isGuest ? `
+                <!-- Ringkasan untuk Tamu Cabang -->
+                <div class="space-y-0.5">
+                  <div class="text-sm font-bold text-slate-900 dark:text-white">Pesanan Desain Saya (${orders.length})</div>
+                  <div class="text-[11px] text-slate-500">${totalUnfinished} sedang diproses • ${totalDone} selesai • Cabang ${escapeHtml(user.branch || '-')}</div>
+                </div>
+              ` : `
               <!-- Status Tabs -->
               <div class="flex flex-wrap items-center gap-1.5">
                 ${[
@@ -9123,9 +9808,11 @@
                   </button>
                 `).join('')}
               </div>
+              `}
 
               <!-- Search & Dropdown Filters -->
               <div class="flex flex-wrap items-center gap-2">
+                ${isGuest ? '' : `
                 <div class="relative min-w-[210px] flex-1 sm:flex-initial">
                   <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                   <input type="search" id="ord-search-input" value="${escapeHtml(APP_STATE.ordSearchQuery || '')}"
@@ -9133,6 +9820,7 @@
                     placeholder="Cari nama atau ID order..."
                     class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
                 </div>
+                `}
 
                 <select id="ord-filter-type" onchange="setOrdQueueFilter('type', this.value)" aria-label="Filter Jenis Desain" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
                   <option value="ALL" ${typeF === 'ALL' ? 'selected' : ''}>Semua Jenis Desain</option>
@@ -9140,10 +9828,12 @@
                   <option value="BANNER" ${typeF === 'BANNER' ? 'selected' : ''}>Banner Cetak</option>
                 </select>
 
+                ${isGuest ? '' : `
                 <select id="ord-filter-branch" onchange="setOrdQueueFilter('branch', this.value)" aria-label="Filter Cabang" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
                   <option value="ALL" ${branchF === 'ALL' ? 'selected' : ''}>Semua Cabang</option>
                   ${DB.appSettings.branches.map(b => `<option value="${escapeHtml(b)}" ${branchF === b ? 'selected' : ''}>${escapeHtml(b)}</option>`).join('')}
                 </select>
+                `}
 
                 <select id="ord-sort-order" onchange="setOrdQueueFilter('sort', this.value)" aria-label="Urutkan Tanggal Pengajuan" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
                   <option value="newest" ${sortBy === 'newest' ? 'selected' : ''}>Terbaru Diajukan</option>
@@ -9180,6 +9870,147 @@
       renderDesignOrder();
       showToast(`Status pesanan ${ord.orderId} diubah menjadi Dikerjakan.`, 'info');
       return true;
+    }
+
+    // -------------------------------------------------------------------------
+    // NOTIFIKASI WHATSAPP KE PEMESAN (khusus MASTER & USER)
+    // -------------------------------------------------------------------------
+    const ORDER_WA_TEMPLATES = [
+      ['printing', 'Desain selesai & sedang proses cetak'],
+      ['ready',    'Sudah selesai dicetak & siap diambil/dikirim'],
+      ['working',  'Pesanan sedang dikerjakan'],
+      ['revision', 'Butuh konfirmasi / revisi dari pemesan']
+    ];
+
+    function normalizeWaNumber(raw) {
+      let d = String(raw || '').replace(/\D/g, '');
+      if (d.startsWith('0')) d = '62' + d.slice(1);
+      else if (d.startsWith('8')) d = '62' + d;
+      return /^62\d{8,13}$/.test(d) ? d : '';
+    }
+
+    function getOrderContactPhone(ord) {
+      const direct = ord.phone || (ord.idCardSpec && ord.idCardSpec.contactPhone) || '';
+      if (direct) return direct;
+      const requester = DB.users.find(u => u.id === ord.requesterId);
+      return (requester && requester.phone) || '';
+    }
+
+    function buildOrderWaMessage(ord, templateKey) {
+      const isIdCard = ord.orderType === 'ID_CARD';
+      const jenis = isIdCard ? 'ID Card' : 'Banner';
+      const namaKartu = isIdCard && ord.idCardSpec ? ` atas nama *${ord.idCardSpec.fullName}*` : '';
+      const sapaan = `Halo ${ord.requesterName || 'Bapak/Ibu'},`;
+      const ref = `pesanan desain *${jenis}*${namaKartu} (ID: *${ord.orderId}*)`;
+      const penutup = `Terima kasih.\n— Tim Desain ${DB.appSettings.appName || 'BIM Creative Hub'}`;
+      const body = {
+        printing: `${ref} sudah *selesai didesain* dan saat ini *sedang dalam proses cetak*. Kami akan mengabari kembali setelah hasil cetak siap diambil/dikirim.`,
+        ready:    `${ref} sudah *selesai dicetak* dan *siap diambil/dikirim* ke ${ord.branch || 'cabang Anda'}.`,
+        working:  `${ref} sudah kami terima dan *sedang dikerjakan* oleh tim desain. Kami akan mengabari kembali setelah desain selesai.`,
+        revision: `terkait ${ref}, kami membutuhkan *konfirmasi/revisi* dari Anda sebelum melanjutkan proses. Mohon balas pesan ini.`
+      }[templateKey] || '';
+      return `${sapaan}\n\n${templateKey === 'revision' ? 'Kami ingin menghubungi Anda ' : 'Kami informasikan bahwa '}${body}\n\n${penutup}`;
+    }
+
+    function openOrderWhatsAppModal(orderId) {
+      const user = getCurrentUser();
+      if (user.role === 'GUEST' || !checkPermission('design_order', 'edit')) {
+        showToast('Akses Ditolak: Hanya Master atau Tim Internal yang dapat menghubungi pemesan.', 'error');
+        return;
+      }
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      if (!ord) return;
+      const phone = getOrderContactPhone(ord);
+      const defaultKey = ord.status === 'Menunggu' ? 'working' : 'printing';
+      const lastLog = (ord.waNotifications || [])[0];
+
+      const bodyHtml = `
+        <form onsubmit="sendOrderWhatsAppSubmit(event, '${ord.id}')" class="space-y-4 text-xs">
+          <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-slate-900 dark:text-white">${escapeHtml(ord.requesterName || '-')}</div>
+              <div class="text-[11px] text-slate-500">${escapeHtml(ord.orderId)} • ${escapeHtml(ord.branch || '-')} • Status: <strong>${escapeHtml(ord.status)}</strong></div>
+            </div>
+            ${lastLog ? `<div class="text-[10px] text-emerald-700 dark:text-emerald-400">Terakhir dihubungi: ${escapeHtml(lastLog.time)}<br/>oleh ${escapeHtml(lastLog.by)}</div>` : ''}
+          </div>
+
+          <div>
+            <label class="bim-label">Nomor WhatsApp Pemesan <span class="text-red-500">*</span></label>
+            <input type="tel" id="ord-wa-phone" required value="${escapeHtml(phone)}" placeholder="0812xxxxxxxx" class="bim-input font-mono" />
+            ${phone ? '' : '<div class="text-[10px] text-amber-600 mt-0.5">Nomor tidak tercantum di pesanan. Silakan isi manual.</div>'}
+          </div>
+
+          <div>
+            <label class="bim-label">Pilih Isi Pesan</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              ${ORDER_WA_TEMPLATES.map(([key, label]) => `
+                <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                  <input type="radio" name="ord-wa-template" value="${key}" ${key === defaultKey ? 'checked' : ''} onchange="applyOrderWaTemplate('${ord.id}', '${key}')" class="accent-[#14532D]" />
+                  <span class="font-semibold">${escapeHtml(label)}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
+          <div>
+            <label class="bim-label">Pesan (boleh diedit sebelum dikirim)</label>
+            <textarea id="ord-wa-message" rows="8" class="bim-input leading-relaxed">${escapeHtml(buildOrderWaMessage(ord, defaultKey))}</textarea>
+          </div>
+
+          <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
+            <button type="button" onclick="closeUniversalModal()" class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold">Batal</button>
+            <button type="submit" class="px-5 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5A] text-white font-bold shadow-sm transition">Buka WhatsApp &amp; Kirim</button>
+          </div>
+        </form>
+      `;
+      openUniversalModal(`Kabari Pemesan via WhatsApp (${ord.orderId})`, bodyHtml, ' ');
+    }
+
+    function applyOrderWaTemplate(orderId, templateKey) {
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      const ta = document.getElementById('ord-wa-message');
+      if (ord && ta) ta.value = buildOrderWaMessage(ord, templateKey);
+    }
+
+    function sendOrderWhatsAppSubmit(e, orderId) {
+      if (e && e.preventDefault) e.preventDefault();
+      const user = getCurrentUser();
+      if (user.role === 'GUEST' || !checkPermission('design_order', 'edit')) return;
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      if (!ord) return;
+
+      const waNumber = normalizeWaNumber(document.getElementById('ord-wa-phone').value);
+      if (!waNumber) {
+        showToast('Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau 628xxxxxxxxxx.', 'error');
+        return;
+      }
+      const message = (document.getElementById('ord-wa-message').value || '').trim();
+      if (!message) {
+        showToast('Isi pesan tidak boleh kosong.', 'error');
+        return;
+      }
+      const checked = document.querySelector('input[name="ord-wa-template"]:checked');
+      const templateKey = checked ? checked.value : 'custom';
+      const templateLabel = (ORDER_WA_TEMPLATES.find(t => t[0] === templateKey) || [null, 'Pesan kustom'])[1];
+
+      // Buka WhatsApp (Web/App) langsung dari klik pengguna agar tidak diblokir popup blocker
+      window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+
+      const nowStr = getNowWIB();
+      ord.waNotifications = ord.waNotifications || [];
+      ord.waNotifications.unshift({ time: nowStr, by: user.fullName, template: templateLabel, phone: waNumber });
+      ord.statusHistory = ord.statusHistory || [];
+      ord.statusHistory.push({
+        status: 'Notifikasi WhatsApp',
+        by: user.fullName,
+        time: nowStr,
+        note: `Mengabari pemesan: ${templateLabel}`
+      });
+      logAudit('Antrean Desain', 'NOTIFY_WHATSAPP', ord.orderId, `${user.fullName} mengabari pemesan ${ord.requesterName} via WhatsApp (${templateLabel})`);
+      saveDatabase();
+      closeUniversalModal();
+      renderDesignOrder();
+      showToast('WhatsApp dibuka. Tekan tombol Kirim di WhatsApp untuk mengirim pesan.', 'success');
     }
 
     function handleOrderSentCheckbox(checkboxEl, orderId) {
@@ -10055,12 +10886,20 @@
               <div class="text-[11px] text-slate-500">Diajukan pada: <strong>${escapeHtml(ord.createdAt)}</strong> • Pemohon: ${escapeHtml(ord.requesterName)}</div>
             </div>
 
-            ${canManage && ord.status !== 'Selesai' ? `
-              <button type="button" onclick="openConfirmCompleteOrderModal('${ord.id}')" class="px-4 py-2.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold flex items-center gap-2 shadow-sm transition">
-                <i data-lucide="check-circle-2" class="w-4 h-4 text-[#F4B942]"></i>
-                <span>Desain Sudah Terkirim (Tandai Selesai)</span>
-              </button>
-            ` : ''}
+            <div class="flex flex-wrap items-center gap-2">
+              ${canManage ? `
+                <button type="button" onclick="openOrderWhatsAppModal('${ord.id}')" class="px-4 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5A] text-white font-bold flex items-center gap-2 shadow-sm transition">
+                  <i data-lucide="message-circle" class="w-4 h-4"></i>
+                  <span>Kabari Pemesan via WhatsApp</span>
+                </button>
+              ` : ''}
+              ${canManage && ord.status !== 'Selesai' ? `
+                <button type="button" onclick="openConfirmCompleteOrderModal('${ord.id}')" class="px-4 py-2.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold flex items-center gap-2 shadow-sm transition">
+                  <i data-lucide="check-circle-2" class="w-4 h-4 text-[#F4B942]"></i>
+                  <span>Desain Sudah Terkirim (Tandai Selesai)</span>
+                </button>
+              ` : ''}
+            </div>
           </div>
 
           <!-- Main Details & Photo / Final Design File Columns -->
@@ -11066,8 +11905,52 @@
               <button type="submit" class="px-5 py-2.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold shadow-sm transition">Simpan Pengaturan Master &amp; Terapkan</button>
             </div>
           </form>
+
+          <div class="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 class="text-xs font-extrabold text-slate-900 dark:text-white">Daftar Cabang Resmi (${(s.branches || []).length})</h4>
+                <p class="text-[11px] text-slate-500">Cabang yang tampil pada pilihan Order Desain, Akun Tamu, dan Filter. Duplikat seperti "Tuban" otomatis digabung ke "Cabang Tuban".</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="mst-new-branch" placeholder="Nama cabang baru (mis. Cabang Malang)" class="bim-input text-xs py-1.5 w-56" />
+                <button type="button" onclick="addMasterBranchSubmit()" class="px-3.5 py-1.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold text-xs">+ Tambah Cabang</button>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              ${(s.branches || []).map(b => `
+                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                  <span>${escapeHtml(b)}</span>
+                  ${(s.branches || []).length > 1 ? `<button type="button" onclick="removeMasterBranch('${escapeHtml(b)}')" title="Hapus cabang" class="text-rose-600 hover:text-rose-500 font-extrabold">×</button>` : ''}
+                </span>
+              `).join('')}
+            </div>
+          </div>
         </div>
       `;
+    }
+
+    function addMasterBranchSubmit() {
+      const inp = document.getElementById('mst-new-branch');
+      const val = normalizeBranchName(inp ? inp.value : '');
+      if (!val) return;
+      DB.appSettings.branches = DB.appSettings.branches || [];
+      if (DB.appSettings.branches.includes(val)) {
+        showToast(`Cabang "${val}" sudah ada dalam daftar.`, 'info');
+        return;
+      }
+      DB.appSettings.branches.push(val);
+      saveDatabase();
+      renderMasterSettings();
+      showToast(`Cabang "${val}" berhasil ditambahkan.`, 'success');
+    }
+
+    function removeMasterBranch(branchName) {
+      if (!Array.isArray(DB.appSettings.branches) || DB.appSettings.branches.length <= 1) return;
+      DB.appSettings.branches = DB.appSettings.branches.filter(b => b !== branchName);
+      saveDatabase();
+      renderMasterSettings();
+      showToast(`Cabang "${branchName}" dihapus dari daftar.`, 'info');
     }
 
     function saveMasterBrandingSubmit(e) {
