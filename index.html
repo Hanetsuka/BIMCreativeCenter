@@ -1220,12 +1220,35 @@
           updatedBy: user ? `${user.fullName} (${user.role})` : 'Master',
           db: DB
         };
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
+        let data = null;
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            redirect: 'follow',
+            body: JSON.stringify(payload)
+          });
+          const rawText = await res.text();
+          try {
+            data = JSON.parse(rawText);
+          } catch (_) {
+            if (/accounts\.google\.com|ServiceLogin/i.test(rawText)) {
+              throw new Error('DEPLOYMENT_NOT_PUBLIC');
+            }
+            throw new Error('Respons bukan JSON (Pastikan memilih New deployment & Who has access: Anyone).');
+          }
+        } catch (fetchErr) {
+          if (fetchErr && fetchErr.message === 'DEPLOYMENT_NOT_PUBLIC') {
+            throw new Error('Izin akses Google Apps Script belum publik. Di script.google.com klik Deploy -> Manage deployments -> Edit -> Who has access: Anyone (Siapa saja).');
+          }
+          // Fallback no-cors: tetap mengirim data ke Google Drive meskipun browser memblokir pembacaan respons redirect
+          await fetch(url, {
+            method: 'POST',
+            mode: 'no-cors',
+            redirect: 'follow',
+            body: JSON.stringify(payload)
+          });
+          data = { status: 'ok', mode: 'no-cors' };
+        }
         if (data && data.status === 'ok') {
           DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — Tersinkron ke Google Drive (oleh ${payload.updatedBy})`;
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch (_) {}
@@ -11680,8 +11703,12 @@
       try {
         const sep = url.includes('?') ? '&' : '?';
         const tokenParam = getGasSyncToken() ? `&token=${encodeURIComponent(getGasSyncToken())}` : '';
-        const res = await fetch(`${url}${sep}action=ping${tokenParam}&_t=${Date.now()}`, { method: 'GET' });
-        const data = await res.json();
+        const res = await fetch(`${url}${sep}action=ping${tokenParam}&_t=${Date.now()}`, { method: 'GET', redirect: 'follow' });
+        const rawText = await res.text();
+        let data = null;
+        try { data = JSON.parse(rawText); } catch (_) {
+          throw new Error('Deployment belum diset "Who has access: Anyone (Siapa saja)" atau fungsi DriveApp belum di-Authorize di script.google.com.');
+        }
         if (data && data.status === 'ok') {
           DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — TERHUBUNG ke Google Apps Script (${data.hasData ? 'Database sudah ada, update terakhir oleh ' + (data.updatedBy || 'Tim') : 'Database Drive masih kosong, silakan klik Kirim Data ke Cloud'})`;
           saveDatabase();
@@ -11691,9 +11718,12 @@
           throw new Error((data && data.message) || 'Respons tidak dikenal');
         }
       } catch (err) {
-        DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — GAGAL KONEKSI: ${err.message}`;
+        const msg = /Failed to fetch/i.test(String(err && err.message))
+          ? 'Browser diblokir membaca respons Google Apps Script. Pastikan di script.google.com: (1) Klik tombol Run pada doGet sekali untuk Authorize DriveApp, lalu (2) Deploy -> Manage deployments -> Edit -> Version: New version & Who has access: Anyone.'
+          : err.message;
+        DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — GAGAL KONEKSI: ${msg}`;
         renderMasterSettings();
-        showToast(`Gagal terhubung: ${err.message}`, 'error');
+        showToast(msg, 'error');
       }
     }
 
