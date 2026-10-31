@@ -576,7 +576,7 @@
                 <span>Buat Order Baru</span>
                 <i data-lucide="arrow-right" class="w-4 h-4 text-[#F4B942]"></i>
               </button>
-              <button type="submit" onclick="APP_STATE.guestLoginTargetTab='queue'" class="py-3 px-4 rounded-2xl bg-[#172554] hover:bg-blue-900 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2">
+              <button type="button" onclick="APP_STATE.guestLoginTargetTab='queue'; handleGuestManualLoginSubmit(event);" class="py-3 px-4 rounded-2xl bg-[#172554] hover:bg-blue-900 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2">
                 <i data-lucide="layers" class="w-4 h-4 text-[#F4B942]"></i>
                 <span>Cek Pesanan Cabang</span>
               </button>
@@ -1127,6 +1127,9 @@
       'Baureno', 'Paciran', 'Jombang', 'Sidayu', 'Ngimbang'
     ];
     const OFFICIAL_BIM_BRANCHES = OFFICIAL_BIM_BRANCH_NAMES.map(b => `Cabang ${b}`);
+    const ORDERS_BACKUP_KEY = 'BIM_ORDERS_BACKUP_V1';
+    const DELETED_ORDERS_KEY = 'BIM_DELETED_ORDER_IDS_V1';
+    const ACTIVE_SESSION_KEY = 'BIM_ACTIVE_SESSION_V1';
 
     let DB = loadDatabase();
     let APP_STATE = {
@@ -1251,6 +1254,186 @@
       return dbObj;
     }
 
+    function getDeletedOrderIdsSet() {
+      try {
+        const raw = localStorage.getItem(DELETED_ORDERS_KEY);
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) return new Set(arr);
+        }
+      } catch (_) {}
+      return new Set();
+    }
+
+    function markOrderDeletedLocally(ord) {
+      if (!ord) return;
+      try {
+        const set = getDeletedOrderIdsSet();
+        if (ord.id) set.add(String(ord.id));
+        if (ord.orderId) set.add(String(ord.orderId));
+        localStorage.setItem(DELETED_ORDERS_KEY, JSON.stringify(Array.from(set)));
+      } catch (_) {}
+      try {
+        const bk = loadOrdersBackup().filter(o => o && o.id !== ord.id && o.orderId !== ord.orderId);
+        localStorage.setItem(ORDERS_BACKUP_KEY, JSON.stringify(bk));
+      } catch (_) {}
+    }
+
+    function loadOrdersBackup() {
+      try {
+        const raw = localStorage.getItem(ORDERS_BACKUP_KEY);
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) return arr;
+        }
+      } catch (_) {}
+      return [];
+    }
+
+    function saveOrdersBackup(orders) {
+      if (!Array.isArray(orders)) return;
+      const deletedSet = getDeletedOrderIdsSet();
+      const validOrders = orders.filter(o => o && !deletedSet.has(String(o.id)) && !deletedSet.has(String(o.orderId)));
+      try {
+        localStorage.setItem(ORDERS_BACKUP_KEY, JSON.stringify(validOrders));
+      } catch (_) {
+        try {
+          const compact = validOrders.map(o => {
+            const copy = { ...o };
+            if (copy.draftPreviewUrl && copy.draftPreviewUrl.length > 80000) copy.draftPreviewUrl = '';
+            if (copy.idCardSpec && copy.idCardSpec.photoDataUrl && copy.idCardSpec.photoDataUrl.length > 180000) {
+              copy.idCardSpec = { ...copy.idCardSpec, photoDataUrl: '' };
+            }
+            return copy;
+          });
+          localStorage.setItem(ORDERS_BACKUP_KEY, JSON.stringify(compact));
+        } catch (__) {}
+      }
+    }
+
+    function pickFresherDesignOrder(a, b) {
+      if (!a) return b;
+      if (!b) return a;
+      const rankStatus = st => (st === 'Selesai' ? 3 : st === 'Dikerjakan' ? 2 : 1);
+      const rA = rankStatus(a.status);
+      const rB = rankStatus(b.status);
+      const hA = Array.isArray(a.statusHistory) ? a.statusHistory.length : 0;
+      const hB = Array.isArray(b.statusHistory) ? b.statusHistory.length : 0;
+      const wA = Array.isArray(a.waNotifications) ? a.waNotifications.length : 0;
+      const wB = Array.isArray(b.waNotifications) ? b.waNotifications.length : 0;
+      let winner = a;
+      let other = b;
+      if (hB > hA || rB > rA || (hB === hA && rB === rA && wB > wA)) {
+        winner = b;
+        other = a;
+      }
+      const merged = { ...other, ...winner };
+      if (!merged.finalFileUrl && other.finalFileUrl) merged.finalFileUrl = other.finalFileUrl;
+      if (merged.idCardSpec && other.idCardSpec && !merged.idCardSpec.photoDataUrl && other.idCardSpec.photoDataUrl) {
+        merged.idCardSpec = { ...merged.idCardSpec, photoDataUrl: other.idCardSpec.photoDataUrl };
+      }
+      return merged;
+    }
+
+    function mergeDesignOrdersSafely(primaryOrders, secondaryOrders) {
+      const deletedSet = getDeletedOrderIdsSet();
+      const backupOrders = loadOrdersBackup();
+      const map = new Map();
+      const addList = list => {
+        if (!Array.isArray(list)) return;
+        list.forEach(item => {
+          if (!item || (!item.orderId && !item.id)) return;
+          if (deletedSet.has(String(item.id)) || deletedSet.has(String(item.orderId))) return;
+          const key = String(item.orderId || item.id).trim().toUpperCase();
+          if (!map.has(key)) {
+            map.set(key, item);
+          } else {
+            map.set(key, pickFresherDesignOrder(map.get(key), item));
+          }
+        });
+      };
+      addList(primaryOrders);
+      addList(backupOrders);
+      addList(secondaryOrders);
+      const merged = Array.from(map.values());
+      merged.sort((x, y) => {
+        if (Boolean(x.isDemo) !== Boolean(y.isDemo)) return x.isDemo ? 1 : -1;
+        const tX = Number(String(x.id || '').replace(/\D/g, '').slice(0, 13)) || 0;
+        const tY = Number(String(y.id || '').replace(/\D/g, '').slice(0, 13)) || 0;
+        if (tX && tY && tX !== tY) return tY - tX;
+        return String(y.orderId || '').localeCompare(String(x.orderId || ''));
+      });
+      return merged;
+    }
+
+    function mergeUsersSafely(incomingUsers, localUsers) {
+      const map = new Map();
+      const isGenericGuestName = name => !name || /^tamu\s+/i.test(String(name).trim());
+      const addUsers = list => {
+        if (!Array.isArray(list)) return;
+        list.forEach(u => {
+          if (!u || !u.id) return;
+          if (!map.has(u.id)) {
+            map.set(u.id, { ...u });
+          } else {
+            const prev = map.get(u.id);
+            const combined = { ...prev, ...u };
+            if (isGenericGuestName(combined.fullName) && !isGenericGuestName(prev.fullName)) {
+              combined.fullName = prev.fullName;
+            }
+            if (!combined.phone && prev.phone) {
+              combined.phone = prev.phone;
+            }
+            if (prev.lastLoginAt && prev.lastLoginAt !== '-' && (!combined.lastLoginAt || combined.lastLoginAt === '-')) {
+              combined.lastLoginAt = prev.lastLoginAt;
+            }
+            map.set(u.id, combined);
+          }
+        });
+      };
+      addUsers(incomingUsers);
+      addUsers(localUsers);
+      return Array.from(map.values());
+    }
+
+    function saveActiveSessionState() {
+      try {
+        if (typeof APP_STATE === 'undefined' || !APP_STATE) return;
+        const snap = {
+          currentUserId: APP_STATE.currentUserId || 'usr_master',
+          activeModule: APP_STATE.activeModule || 'dashboard',
+          ordActiveTab: APP_STATE.ordActiveTab || 'queue',
+          guestTrackedPhone: APP_STATE.guestTrackedPhone || '',
+          guestTrackedOrderCode: APP_STATE.guestTrackedOrderCode || ''
+        };
+        sessionStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(snap));
+        localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(snap));
+      } catch (_) {}
+    }
+
+    function restoreActiveSessionState() {
+      try {
+        const raw = sessionStorage.getItem(ACTIVE_SESSION_KEY) || localStorage.getItem(ACTIVE_SESSION_KEY);
+        if (!raw) return false;
+        const snap = JSON.parse(raw);
+        if (!snap || !snap.currentUserId) return false;
+        const found = DB.users.find(u => u.id === snap.currentUserId);
+        if (found && found.isActive !== false) {
+          APP_STATE.currentUserId = found.id;
+          if (found.role === 'GUEST') {
+            APP_STATE.activeModule = 'design_order';
+            APP_STATE.ordActiveTab = snap.ordActiveTab || 'queue';
+          } else if (snap.activeModule) {
+            APP_STATE.activeModule = snap.activeModule;
+          }
+          if (snap.guestTrackedPhone) APP_STATE.guestTrackedPhone = snap.guestTrackedPhone;
+          if (snap.guestTrackedOrderCode) APP_STATE.guestTrackedOrderCode = snap.guestTrackedOrderCode;
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    }
+
     function loadDatabase() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -1264,13 +1447,16 @@
               masterUsr.passwordHash = 'Berkahinsanvalensi';
               masterUsr.fullName = 'Valensi';
             }
+            parsed.designOrders = mergeDesignOrdersSafely(parsed.designOrders, []);
             return sanitizeDatabaseBranches(parsed);
           }
         }
       } catch (err) {
         console.warn('Storage read fallback to in-memory state:', err);
       }
-      return sanitizeDatabaseBranches(getInitialDatabase());
+      const initDb = getInitialDatabase();
+      initDb.designOrders = mergeDesignOrdersSafely(initDb.designOrders, []);
+      return sanitizeDatabaseBranches(initDb);
     }
 
     function syncToBackendServer(endpoint, method, payload) {
@@ -1372,6 +1558,8 @@
     let GAS_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx4s2HI4WIgMKECcwNOg_xVtPjYnkX4IM0UDyTwkic43KHvhToo5te0gRDbC-try9DZ/exec';
     let GAS_SYNC_TIMER = null;
     let GAS_SYNC_IN_FLIGHT = false;
+    let GAS_SYNC_PENDING = false;
+    let LAST_LOCAL_WRITE_TS = 0;
 
     function getGasWebAppUrl() {
       try {
@@ -1420,12 +1608,18 @@
         if (!silent) showToast('URL Web App Google Apps Script belum diisi.', 'error');
         return false;
       }
-      if (GAS_SYNC_IN_FLIGHT) return false;
+      if (GAS_SYNC_IN_FLIGHT) {
+        GAS_SYNC_PENDING = true;
+        return false;
+      }
       GAS_SYNC_IN_FLIGHT = true;
       const statusEl = document.getElementById('footer-storage-status');
       if (statusEl) statusEl.textContent = 'Menyinkronkan ke Google Cloud...';
 
       try {
+        if (DB && Array.isArray(DB.designOrders)) {
+          DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+        }
         const user = getCurrentUser();
         const payload = {
           action: 'save',
@@ -1488,6 +1682,12 @@
         return false;
       } finally {
         GAS_SYNC_IN_FLIGHT = false;
+        if (GAS_SYNC_PENDING) {
+          GAS_SYNC_PENDING = false;
+          setTimeout(() => {
+            pushDatabaseToGasCloud(true);
+          }, 350);
+        }
       }
     }
 
@@ -1499,6 +1699,7 @@
       }
       const statusEl = document.getElementById('footer-storage-status');
       if (statusEl) statusEl.textContent = 'Mengambil data terbaru dari Google Cloud...';
+      const pullStartTs = Date.now();
 
       try {
         const sep = url.includes('?') ? '&' : '?';
@@ -1513,12 +1714,36 @@
         }
         if (data && data.status === 'ok' && data.db && Array.isArray(data.db.users) && data.db.appSettings) {
           const currentUrl = getGasWebAppUrl();
+          const localOrdersBefore = Array.isArray(DB.designOrders) ? DB.designOrders.slice() : [];
+          const localUsersBefore = Array.isArray(DB.users) ? DB.users.slice() : [];
+          const cloudOrdersRaw = Array.isArray(data.db.designOrders) ? data.db.designOrders : [];
+          const cloudOrderKeys = new Set(cloudOrdersRaw.map(o => o && String(o.orderId || o.id).toUpperCase()));
+
+          data.db.designOrders = mergeDesignOrdersSafely(localOrdersBefore, cloudOrdersRaw);
+          data.db.users = mergeUsersSafely(data.db.users, localUsersBefore);
+
           DB = sanitizeDatabaseBranches(data.db);
+          ensureBranchEmailAccountsExist(true);
+          DB.users = mergeUsersSafely(DB.users, localUsersBefore);
           DB.appSettings.gasWebAppUrl = currentUrl;
           DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — Data ditarik dari Google Drive (Update terakhir: ${data.updatedBy || 'Tim'})`;
+          saveOrdersBackup(DB.designOrders);
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch (_) {}
+
+          const hasUnsyncedLocalOrder = DB.designOrders.some(o => o && !cloudOrderKeys.has(String(o.orderId || o.id).toUpperCase()));
+          if (hasUnsyncedLocalOrder || LAST_LOCAL_WRITE_TS > pullStartTs) {
+            scheduleAutoGasSync();
+          }
+
           refreshAppIdentity();
-          navigateToModule(APP_STATE.activeModule || 'dashboard');
+          const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+          const isTypingInForm = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+          const isFillingOrderForm = APP_STATE.activeModule === 'design_order' && (APP_STATE.ordActiveTab === 'id_card' || APP_STATE.ordActiveTab === 'banner');
+          if (!silent || (!isTypingInForm && !isFillingOrderForm)) {
+            navigateToModule(APP_STATE.activeModule || 'dashboard');
+          } else {
+            renderSidebar();
+          }
           if (!silent) showToast('Data terbaru dari Google Drive berhasil dimuat!', 'success');
           return true;
         } else {
@@ -1535,22 +1760,38 @@
       if (GAS_SYNC_TIMER) clearTimeout(GAS_SYNC_TIMER);
       GAS_SYNC_TIMER = setTimeout(() => {
         pushDatabaseToGasCloud(true);
-      }, 1800);
+      }, 1200);
     }
 
     function saveDatabase() {
+      LAST_LOCAL_WRITE_TS = Date.now();
+      if (DB && Array.isArray(DB.designOrders)) {
+        DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+        saveOrdersBackup(DB.designOrders);
+      }
+      saveActiveSessionState();
       try {
         const serialized = JSON.stringify(DB);
         localStorage.setItem(STORAGE_KEY, serialized);
-        const statusEl = document.getElementById('footer-storage-status');
-        if (statusEl) {
-          const st = getStorageUsageStats();
-          statusEl.textContent = `Tersimpan Otomatis (${getNowTimeShort()} • Kuota Lokal: ${st.usedKb} KB / 5.120 KB — ${st.pct}%)`;
-        }
-        scheduleAutoGasSync();
       } catch (err) {
-        console.warn('Storage write warning:', err);
+        console.warn('Storage write warning, compacting media cache:', err);
+        try {
+          if (Array.isArray(DB.designOrders)) {
+            DB.designOrders.forEach(o => {
+              if (o && o.orderType === 'ID_CARD' && o.idCardSpec && o.idCardSpec.photoDataUrl && o.draftPreviewUrl === o.idCardSpec.photoDataUrl) {
+                o.draftPreviewUrl = '';
+              }
+            });
+          }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+        } catch (_) {}
       }
+      const statusEl = document.getElementById('footer-storage-status');
+      if (statusEl) {
+        const st = getStorageUsageStats();
+        statusEl.textContent = `Tersimpan Otomatis (${getNowTimeShort()} • Kuota Lokal: ${st.usedKb} KB / 5.120 KB — ${st.pct}%)`;
+      }
+      scheduleAutoGasSync();
     }
 
     function getCurrentUser() {
@@ -1698,17 +1939,34 @@
       // 1. Jika tamu sedang melacak Kode Order spesifik (mis. BNR-20261031-003)
       if (APP_STATE.guestTrackedOrderCode) {
         const trackedCode = String(APP_STATE.guestTrackedOrderCode).trim().toUpperCase();
-        if (trackedCode && String(ord.orderId || '').toUpperCase() === trackedCode) {
+        if (trackedCode && String(ord.orderId || '').toUpperCase().includes(trackedCode)) {
           return true;
         }
       }
       // 2. Pencocokan Nomor WA/HP Pemesan (jika tamu mengisi nomor WA miliknya)
       const userPhoneTail = normalizePhoneTail(APP_STATE.guestTrackedPhone || user.phone);
-      const ordPhoneTail = normalizePhoneTail(ord.phone || (ord.idCardSpec && ord.idCardSpec.contactPhone));
+      const ordPhoneTail = normalizePhoneTail(
+        ord.phone ||
+        (ord.idCardSpec && ord.idCardSpec.contactPhone) ||
+        (ord.bannerSpec && ord.bannerSpec.bannerPhone)
+      );
       if (userPhoneTail && ordPhoneTail && userPhoneTail === ordPhoneTail) {
         return true;
       }
-      // 3. Isolasi penuh antar cabang: Tamu melihat seluruh pesanan dari cabangnya sendiri
+      // 3. Jika pesanan diajukan oleh akun tamu yang sedang aktif (dan bukan akun demo bawaan)
+      if (ord.requesterId && user.id && ord.requesterId === user.id && user.id !== 'usr_guest_sby') {
+        return true;
+      }
+      // 4. Jika nama pemesan sama persis dengan nama lengkap tamu yang sedang login (bukan nama generik "Tamu Cabang ...")
+      const cleanUserName = String(user.fullName || '').trim().toLowerCase();
+      if (cleanUserName && !cleanUserName.startsWith('tamu ')) {
+        const reqName = String(ord.requesterName || '').trim().toLowerCase();
+        const cardName = String((ord.idCardSpec && ord.idCardSpec.fullName) || '').trim().toLowerCase();
+        if (reqName === cleanUserName || cardName === cleanUserName) {
+          return true;
+        }
+      }
+      // 5. Isolasi penuh antar cabang: Tamu melihat seluruh pesanan dari cabangnya sendiri
       const userBranchKey = normalizeBranchKey(user.branch);
       const ordBranchKey = normalizeBranchKey(ord.branch);
       if (userBranchKey && ordBranchKey) {
@@ -1719,6 +1977,9 @@
 
     // Backend-equivalent data query isolation for Design Orders (Guest only sees own branch orders!)
     function getAuthorizedDesignOrders() {
+      if (DB && Array.isArray(DB.designOrders)) {
+        DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+      }
       const user = getCurrentUser();
       const baseList = filterDemoItems(DB.designOrders);
       if (user.role === 'GUEST') {
@@ -2604,7 +2865,10 @@
       const customInp = document.getElementById('guest-login-branch');
       if (!sel) return;
       const branches = getAllKnownBranches();
-      const target = selectedBranch || (customInp && customInp.value) || branches[0] || 'Cabang Surabaya';
+      const currentUser = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;
+      const userBranch = (currentUser && currentUser.role === 'GUEST' && currentUser.branch) ? currentUser.branch : '';
+      const currentSelVal = (sel.value && sel.value !== '__CUSTOM__' && sel.value !== 'Cabang Tuban') ? sel.value : '';
+      const target = selectedBranch || currentSelVal || userBranch || (customInp && customInp.value) || branches[0] || 'Cabang Tuban';
       sel.innerHTML = branches.map(b =>
         `<option value="${escapeHtml(b)}" ${normalizeBranchKey(b) === normalizeBranchKey(target) ? 'selected' : ''}>${escapeHtml(b)}</option>`
       ).join('') + `<option value="__CUSTOM__">+ Ketik Nama Cabang Baru...</option>`;
@@ -2632,8 +2896,14 @@
     }
 
     function openLoginModal() {
+      try { sessionStorage.removeItem('BIM_SESSION_AUTHENTICATED'); } catch (_) {}
       ensureBranchEmailAccountsExist(true);
-      populateGuestBranchDropdown();
+      const currentUser = getCurrentUser();
+      populateGuestBranchDropdown(currentUser && currentUser.role === 'GUEST' ? currentUser.branch : '');
+      const nameInp = document.getElementById('guest-login-name');
+      if (nameInp && currentUser && currentUser.role === 'GUEST' && currentUser.fullName && !/^tamu\s+/i.test(currentUser.fullName)) {
+        nameInp.value = currentUser.fullName;
+      }
       const ls = document.getElementById('login-screen');
       if (ls) ls.classList.remove('hidden');
       switchLoginTab('guest');
@@ -2641,6 +2911,8 @@
     }
 
     function closeLoginModalIfAuthenticated() {
+      try { sessionStorage.setItem('BIM_SESSION_AUTHENTICATED', '1'); } catch (_) {}
+      saveActiveSessionState();
       const ls = document.getElementById('login-screen');
       if (ls) ls.classList.add('hidden');
     }
@@ -2670,25 +2942,50 @@
       const inp = document.getElementById('guest-quick-track-input');
       const q = (inp ? inp.value : '').trim();
       if (!q) {
-        showToast('Masukkan Nomor WhatsApp (08...) atau Kode Order (BNR-... / IDC-...) terlebih dahulu.', 'error');
+        showToast('Masukkan Nomor WhatsApp (08...), Kode Order (BNR-... / IDC-...), atau Nama Cabang terlebih dahulu.', 'error');
         return;
       }
 
+      if (DB && Array.isArray(DB.designOrders)) {
+        DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+      }
       const allOrders = filterDemoItems(DB.designOrders);
       const qUpper = q.toUpperCase();
+      const qLower = q.toLowerCase();
       const qPhoneTail = normalizePhoneTail(q);
       const qBranchKey = normalizeBranchKey(q);
 
       const matchedOrder = allOrders.find(o => {
-        if (String(o.orderId || '').toUpperCase() === qUpper) return true;
-        const ordPhoneTail = normalizePhoneTail(o.phone || (o.idCardSpec && o.idCardSpec.contactPhone));
+        if (String(o.orderId || '').toUpperCase().includes(qUpper)) return true;
+        const ordPhoneTail = normalizePhoneTail(
+          o.phone ||
+          (o.idCardSpec && o.idCardSpec.contactPhone) ||
+          (o.bannerSpec && o.bannerSpec.bannerPhone)
+        );
         if (qPhoneTail && ordPhoneTail && qPhoneTail === ordPhoneTail) return true;
         if (qBranchKey && qBranchKey.length >= 3 && normalizeBranchKey(o.branch) === qBranchKey) return true;
+        const reqName = String(o.requesterName || '').toLowerCase();
+        const personName = String((o.idCardSpec && o.idCardSpec.fullName) || '').toLowerCase();
+        const headline = String((o.bannerSpec && o.bannerSpec.headline) || '').toLowerCase();
+        if (qLower.length >= 3 && (reqName.includes(qLower) || personName.includes(qLower) || headline.includes(qLower))) return true;
         return false;
       });
 
       if (!matchedOrder) {
-        showToast(`Tidak ditemukan pesanan dengan Nomor WA / Kode "${q}". Pastikan nomor atau cabang sesuai.`, 'error');
+        // Jika pengguna mengetik nama cabang resmi meskipun belum ada order lokal, coba masuk ke cabang tersebut & tarik dari Cloud
+        const matchedOfficialBr = OFFICIAL_BIM_BRANCHES.find(b => normalizeBranchKey(b) === qBranchKey);
+        if (matchedOfficialBr) {
+          const nameInp = document.getElementById('guest-login-name');
+          const branchInp = document.getElementById('guest-login-branch');
+          const branchSel = document.getElementById('guest-login-branch-select');
+          if (nameInp && !nameInp.value.trim()) nameInp.value = `Tamu ${matchedOfficialBr}`;
+          if (branchSel) branchSel.value = matchedOfficialBr;
+          if (branchInp) branchInp.value = matchedOfficialBr;
+          APP_STATE.guestLoginTargetTab = 'queue';
+          handleGuestManualLoginSubmit({ preventDefault: () => {} });
+          return;
+        }
+        showToast(`Tidak ditemukan pesanan dengan kata kunci "${q}". Pastikan Nomor WA, Kode Order, atau Cabang sesuai.`, 'error');
         return;
       }
 
@@ -2698,9 +2995,9 @@
       const branchSel = document.getElementById('guest-login-branch-select');
       const phoneInp = document.getElementById('guest-login-phone');
 
-      if (nameInp) nameInp.value = matchedOrder.requesterName || 'Tamu Cabang';
+      if (nameInp) nameInp.value = matchedOrder.requesterName || `Tamu ${matchedOrder.branch || 'Cabang'}`;
       if (branchSel) branchSel.value = '__CUSTOM__';
-      if (branchInp) branchInp.value = matchedOrder.branch || 'Cabang Umum';
+      if (branchInp) branchInp.value = matchedOrder.branch || 'Cabang Tuban';
       if (phoneInp) phoneInp.value = matchedOrder.phone || '';
 
       if (/^(?:IDC|BNR)-/i.test(qUpper)) {
@@ -2719,14 +3016,21 @@
       const branchInput = document.getElementById('guest-login-branch');
       const phoneInput = document.getElementById('guest-login-phone');
 
-      const guestName = (nameInput ? nameInput.value : '').trim();
       const rawBranch = (branchSel && branchSel.value && branchSel.value !== '__CUSTOM__')
         ? branchSel.value
         : (branchInput ? branchInput.value : '');
-      const guestBranch = rawBranch.trim();
+      const guestBranch = normalizeBranchName(rawBranch.trim());
       const guestPhone = (phoneInput ? phoneInput.value : '').trim();
       const targetTab = APP_STATE.guestLoginTargetTab || 'id_card';
       APP_STATE.guestLoginTargetTab = 'id_card';
+
+      let guestName = (nameInput ? nameInput.value : '').trim();
+      if (!guestName && targetTab === 'queue' && guestBranch) {
+        const existingBrGuest = DB.users.find(u => u.role === 'GUEST' && normalizeBranchKey(u.branch) === normalizeBranchKey(guestBranch));
+        guestName = (existingBrGuest && existingBrGuest.fullName && !/^tamu\s+/i.test(existingBrGuest.fullName))
+          ? existingBrGuest.fullName
+          : `Tamu ${guestBranch}`;
+      }
 
       if (!guestName || !guestBranch) {
         showToast('Harap isi Nama Lengkap dan pilih/ketik Nama Cabang terlebih dahulu.', 'error');
@@ -2768,7 +3072,9 @@
           };
           DB.users.push(guestUser);
         } else {
-          guestUser.fullName = guestName;
+          if (!/^tamu\s+/i.test(guestName) || !guestUser.fullName) {
+            guestUser.fullName = guestName;
+          }
           guestUser.branch = guestBranch;
           if (guestPhone) guestUser.phone = guestPhone;
           if (!guestUser.email || guestUser.email === 'tamu@bim.co.id') {
@@ -2779,9 +3085,11 @@
           guestUser.lastLoginAt = getNowWIB();
         }
 
-        if (guestPhone) {
-          APP_STATE.guestTrackedPhone = guestPhone;
-        }
+        APP_STATE.guestTrackedPhone = guestPhone || '';
+        APP_STATE.guestTrackedOrderCode = '';
+        APP_STATE.ordFilterType = 'ALL';
+        APP_STATE.ordFilterStatus = 'ALL';
+        APP_STATE.ordSearchQuery = '';
 
         if (DB.appSettings && Array.isArray(DB.appSettings.branches)) {
           const existsBr = DB.appSettings.branches.some(b => normalizeBranchKey(b) === normalizeBranchKey(guestBranch));
@@ -2794,7 +3102,7 @@
         APP_STATE.activeModule = 'design_order';
         APP_STATE.ordActiveTab = targetTab;
         saveDatabase();
-        logAudit('Autentikasi', 'GUEST_LOGIN', guestUser.id, `Tamu masuk: ${guestName} — Cabang: ${guestBranch}, tab: ${targetTab}`);
+        logAudit('Autentikasi', 'GUEST_LOGIN', guestUser.id, `Tamu masuk: ${guestUser.fullName} — Cabang: ${guestBranch}, tab: ${targetTab}`);
         applyThemeMode(guestUser.themePreference || 'light');
         closeLoginModalIfAuthenticated();
         refreshAppIdentity();
@@ -2802,8 +3110,11 @@
         const myCnt = getAuthorizedDesignOrders().length;
         if (targetTab === 'queue') {
           showToast(`Menampilkan ${myCnt} pesanan untuk ${guestBranch}.`, 'success');
+          if (isGasCloudConfigured()) {
+            pullDatabaseFromGasCloud(true);
+          }
         } else {
-          showToast(`Selamat datang ${guestName} (${guestBranch})! (${myCnt} riwayat pesanan tersimpan di tab Pesanan Saya).`, 'success');
+          showToast(`Selamat datang ${guestUser.fullName} (${guestBranch})! (${myCnt} riwayat pesanan tersimpan di tab Pesanan Saya).`, 'success');
         }
       }, 320);
     }
@@ -2848,17 +3159,22 @@
       }
       APP_STATE.currentUserId = targetUser.id;
       targetUser.lastLoginAt = getNowWIB();
+      if (targetUser.role === 'GUEST') {
+        APP_STATE.activeModule = 'design_order';
+        APP_STATE.guestTrackedOrderCode = '';
+        APP_STATE.guestTrackedPhone = '';
+        APP_STATE.ordFilterType = 'ALL';
+        APP_STATE.ordFilterStatus = 'ALL';
+        APP_STATE.ordSearchQuery = '';
+        const myOrders = getAuthorizedDesignOrders();
+        APP_STATE.ordActiveTab = myOrders.length > 0 ? 'queue' : 'id_card';
+      } else if (targetUser.role !== 'MASTER' && APP_STATE.activeModule === 'master_settings') {
+        APP_STATE.activeModule = 'dashboard';
+      }
       logAudit('Autentikasi', 'LOGIN', targetUser.id, `Sesi aktif beralih ke ${targetUser.fullName} (${targetUser.role} - ${targetUser.branch})`);
       applyThemeMode(targetUser.themePreference || 'light');
       closeLoginModalIfAuthenticated();
       refreshAppIdentity();
-
-      if (targetUser.role === 'GUEST') {
-        APP_STATE.activeModule = 'design_order';
-        APP_STATE.ordActiveTab = 'id_card';
-      } else if (targetUser.role !== 'MASTER' && APP_STATE.activeModule === 'master_settings') {
-        APP_STATE.activeModule = 'dashboard';
-      }
       navigateToModule(APP_STATE.activeModule);
       showToast(`Masuk sebagai ${targetUser.fullName} (${targetUser.role})`, 'success');
     }
@@ -9706,7 +10022,7 @@
       if (!o) return '';
       if (o.status === 'Selesai') {
         return `
-          <div onclick="showOrderStatusAnimation('completed', '${o.id}')" title="Klik untuk memutar animasi selesai"
+          <div onclick="showOrderStatusAnimation('completed', '${o.id}')" title="Klik untuk melihat status pesanan selesai"
             class="cursor-pointer group p-3 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-amber-500/15 border border-emerald-500/35 hover:border-emerald-500/60 transition space-y-2">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5 min-w-0">
@@ -9723,9 +10039,6 @@
                   </div>
                 </div>
               </div>
-              <span class="px-2 py-0.5 rounded-lg bg-white/80 dark:bg-slate-900/80 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0 group-hover:scale-105 transition">
-                ✨ Animasi
-              </span>
             </div>
             <div class="w-full h-1.5 rounded-full bg-emerald-950/10 dark:bg-slate-800 overflow-hidden">
               <div class="h-full w-full rounded-full bg-gradient-to-r from-[#14532D] via-[#16A34A] to-[#F4B942]"></div>
@@ -9736,7 +10049,7 @@
 
       if (o.status === 'Dikerjakan') {
         return `
-          <div onclick="showOrderStatusAnimation('working', '${o.id}')" title="Klik untuk melihat animasi status pengerjaan"
+          <div onclick="showOrderStatusAnimation('working', '${o.id}')" title="Klik untuk melihat status pengerjaan"
             class="cursor-pointer group p-3 rounded-2xl bg-blue-500/10 border border-blue-500/30 hover:border-blue-500/50 transition space-y-2">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5 min-w-0">
@@ -9764,7 +10077,7 @@
 
       // Default: Menunggu
       return `
-        <div onclick="showOrderStatusAnimation('submitted', '${o.id}')" title="Klik untuk melihat animasi status pesanan"
+        <div onclick="showOrderStatusAnimation('submitted', '${o.id}')" title="Klik untuk melihat status pesanan"
           class="cursor-pointer group p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/55 transition space-y-2">
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5 min-w-0">
@@ -10022,7 +10335,7 @@
       const tabs = [
         ['id_card', 'Order ID Card',      'id-card'],
         ['banner',  'Order Banner',       'flag'],
-        ['queue',   user.role === 'GUEST' ? `Pesanan Saya (${unfinishedCount} Aktif)` : `Antrean Desain (${unfinishedCount} Belum Selesai)`, 'layers']
+        ['queue',   user.role === 'GUEST' ? `Pesanan Saya (${visibleOrders.length})` : `Antrean Desain (${unfinishedCount} Belum Selesai)`, 'layers']
       ];
       if (user.role === 'MASTER') {
         tabs.push(['productivity', 'Ringkasan Produksi & Kategori Banner', 'bar-chart-2']);
@@ -10173,6 +10486,11 @@
 
     function setDesignOrderTab(tabId) {
       APP_STATE.ordActiveTab = tabId;
+      if (tabId === 'queue' && DB && Array.isArray(DB.designOrders)) {
+        DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+      }
+      saveActiveSessionState();
+      renderSidebar();
       renderDesignOrder();
     }
 
@@ -11345,15 +11663,23 @@
 
       const reader = new FileReader();
       reader.onload = function(evt) {
-        APP_STATE.ordIdCardPhotoTemp = evt.target.result;
+        const rawDataUrl = evt.target.result;
+        APP_STATE.ordIdCardPhotoTemp = rawDataUrl;
         APP_STATE.ordIdCardPhotoValidated = true;
         APP_STATE.ordIdCardPhotoName = file.name;
         const img = document.getElementById('idc-preview-img');
-        if (img) img.src = APP_STATE.ordIdCardPhotoTemp;
+        if (img) img.src = rawDataUrl;
         if (msgEl) {
           msgEl.textContent = `Tervalidasi: ${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`;
           msgEl.className = 'text-[11px] font-bold text-emerald-600 dark:text-emerald-400';
         }
+        compressUploadedImageDataUrl(rawDataUrl, 720, 0.80, function(compressedUrl) {
+          if (compressedUrl) {
+            APP_STATE.ordIdCardPhotoTemp = compressedUrl;
+            const prevEl = document.getElementById('idc-preview-img');
+            if (prevEl) prevEl.src = compressedUrl;
+          }
+        });
         showToast('Foto pegawai berhasil divalidasi dan dimuat ke pratinjau.', 'success');
       };
       reader.readAsDataURL(file);
@@ -11428,6 +11754,11 @@
       if (btnText) btnText.textContent = 'Mengirim Pesanan...';
 
       const user = getCurrentUser();
+      const cleanBranch = normalizeBranchName(branch || user.branch || 'Cabang Tuban');
+      if (user.role === 'GUEST') {
+        user.branch = cleanBranch;
+        if (phone) user.phone = phone;
+      }
       const autoOrderId = generateUniqueOrderId('IDC');
       const nowStr = getNowWIB();
       const uploadedPhoto = APP_STATE.ordIdCardPhotoValidated ? APP_STATE.ordIdCardPhotoTemp : '';
@@ -11437,10 +11768,10 @@
         orderId: autoOrderId,
         orderType: 'ID_CARD',
         requesterId: user.id,
-        requesterName: user.fullName,
+        requesterName: user.fullName || fullName,
         phone,
         jobTitle,
-        branch,
+        branch: cleanBranch,
         assignedDesignerId: 'usr_designer',
         assignedDesignerName: 'Budi Santoso',
         priority: 'Normal',
@@ -11456,36 +11787,47 @@
           fullName,
           contactPhone: phone,
           jobTitle,
-          branch,
+          branch: cleanBranch,
           specialNotes: notes,
           photoDataUrl: uploadedPhoto,
           photoValidated: Boolean(APP_STATE.ordIdCardPhotoValidated)
         },
         bannerSpec: null,
         designerNotes: 'Pesanan baru masuk ke Antrean Desain dan menunggu pengerjaan.',
-        draftPreviewUrl: uploadedPhoto || '',
+        draftPreviewUrl: '',
         finalFileUrl: '',
         revisions: [],
         statusHistory: [
-          { status: 'Menunggu', by: user.fullName, time: nowStr, note: 'Pesanan ID Card diajukan melalui form Pesan ID Card.' }
+          { status: 'Menunggu', by: user.fullName || fullName, time: nowStr, note: 'Pesanan ID Card diajukan melalui form Pesan ID Card.' }
         ],
         isDemo: false
       };
 
       DB.designOrders.unshift(newOrder);
-      syncToBackendServer('/api/design-orders/id-card', 'POST', { fullName, contactPhone: phone, jobTitle, branch, specialNotes: notes, photoDataUrl: uploadedPhoto, requesterId: user.id, requesterName: user.fullName });
-      logAudit('Antrean Desain', 'CREATE_ID_CARD', autoOrderId, `Mengajukan pesanan ID Card ${autoOrderId} untuk "${fullName}" (${jobTitle} - ${branch})`);
-      pushNotification('Order Desain', `Pesanan ID Card Baru: ${autoOrderId}`, `${user.fullName} mengajukan pembuatan ID Card untuk ${fullName} (${branch}).`, 'design_order', ['MASTER', 'USER']);
+      saveOrdersBackup(DB.designOrders);
+      syncToBackendServer('/api/design-orders/id-card', 'POST', { fullName, contactPhone: phone, jobTitle, branch: cleanBranch, specialNotes: notes, photoDataUrl: uploadedPhoto, requesterId: user.id, requesterName: user.fullName });
+      logAudit('Antrean Desain', 'CREATE_ID_CARD', autoOrderId, `Mengajukan pesanan ID Card ${autoOrderId} untuk "${fullName}" (${jobTitle} - ${cleanBranch})`);
+      pushNotification('Order Desain', `Pesanan ID Card Baru: ${autoOrderId}`, `${user.fullName} mengajukan pembuatan ID Card untuk ${fullName} (${cleanBranch}).`, 'design_order', ['MASTER', 'USER']);
       saveDatabase();
+      if (isGasCloudConfigured()) {
+        pushDatabaseToGasCloud(true);
+      }
 
-      // Reset temporary photo state
+      // Reset temporary photo state & filters so new order is immediately visible
       APP_STATE.ordIdCardPhotoTemp = '';
       APP_STATE.ordIdCardPhotoValidated = false;
       APP_STATE.ordIdCardPhotoName = '';
       APP_STATE.ordSelectedOrderId = newOrder.id;
       APP_STATE.ordActiveTab = 'queue';
+      APP_STATE.ordFilterType = 'ALL';
       APP_STATE.ordFilterStatus = 'UNFINISHED';
+      APP_STATE.ordSearchQuery = '';
+      APP_STATE.guestTrackedPhone = '';
+      APP_STATE.guestTrackedOrderCode = '';
+      saveActiveSessionState();
 
+      refreshAppIdentity();
+      renderSidebar();
       renderDesignOrder();
       showOrderStatusAnimation('submitted', newOrder);
       showToast(`Pesanan berhasil dikirim! Nomor Order Anda: ${autoOrderId}`, 'success');
@@ -11769,8 +12111,15 @@
       const h = Number(document.getElementById('bnr-height').value) || 160;
       const unit = document.getElementById('bnr-unit').value;
       const headline = document.getElementById('bnr-headline').value.trim();
-      const branch = (document.getElementById('bnr-branch').value || '').trim() || user.branch || 'Cabang Umum';
+      const rawBranch = (document.getElementById('bnr-branch').value || '').trim() || user.branch || 'Cabang Tuban';
+      const branch = normalizeBranchName(rawBranch);
       const phone = document.getElementById('bnr-phone').value.trim();
+      const reqNameVal = document.getElementById('bnr-req').value.trim() || user.fullName;
+      if (user.role === 'GUEST') {
+        user.branch = branch;
+        if (phone) user.phone = phone;
+        if (reqNameVal && !/^tamu\s+/i.test(reqNameVal)) user.fullName = reqNameVal;
+      }
       const nowStr = getNowWIB();
 
       const bnrInfo = ((document.getElementById('bnr-body') || {}).value || '').trim();
@@ -11783,11 +12132,11 @@
       const combinedBodyInfo = bodyParts.length > 0 ? bodyParts.join(' • ') : '-';
 
       const newOrder = {
-        id: 'ord_' + Date.now(),
+        id: 'ord_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
         orderId: autoOrderId,
         orderType: 'BANNER',
         requesterId: user.id,
-        requesterName: document.getElementById('bnr-req').value.trim() || user.fullName,
+        requesterName: reqNameVal,
         phone,
         jobTitle: '',
         branch,
@@ -11824,18 +12173,29 @@
         finalFileUrl: '',
         revisions: [],
         statusHistory: [
-          { status: 'Menunggu', by: user.fullName, time: nowStr, note: 'Pesanan Banner Cetak diajukan.' }
+          { status: 'Menunggu', by: reqNameVal, time: nowStr, note: 'Pesanan Banner Cetak diajukan.' }
         ],
         isDemo: false
       };
 
       DB.designOrders.unshift(newOrder);
+      saveOrdersBackup(DB.designOrders);
       logAudit('Antrean Desain', 'CREATE_BANNER', autoOrderId, `Mengajukan pesanan Banner ${autoOrderId} (${w}x${h} ${unit} - ${branch})`);
-      pushNotification('Order Desain', `Pesanan Banner Baru: ${autoOrderId}`, `${user.fullName} (${branch}) memesan ${cat} ukuran ${w}x${h} ${unit}.`, 'design_order', ['MASTER', 'USER']);
+      pushNotification('Order Desain', `Pesanan Banner Baru: ${autoOrderId}`, `${reqNameVal} (${branch}) memesan ${cat} ukuran ${w}x${h} ${unit}.`, 'design_order', ['MASTER', 'USER']);
       saveDatabase();
+      if (isGasCloudConfigured()) {
+        pushDatabaseToGasCloud(true);
+      }
       APP_STATE.ordActiveTab = 'queue';
+      APP_STATE.ordFilterType = 'ALL';
       APP_STATE.ordFilterStatus = 'UNFINISHED';
+      APP_STATE.ordSearchQuery = '';
+      APP_STATE.guestTrackedPhone = '';
+      APP_STATE.guestTrackedOrderCode = '';
       APP_STATE.ordSelectedOrderId = newOrder.id;
+      saveActiveSessionState();
+      refreshAppIdentity();
+      renderSidebar();
       renderDesignOrder();
       showOrderStatusAnimation('submitted', newOrder);
       showToast(`Pesanan Banner ${autoOrderId} berhasil ditambahkan ke Antrean Desain!`, 'success');
@@ -12462,10 +12822,14 @@
 
       const deletedCode = ord.orderId;
       const deletedBranch = ord.branch;
+      markOrderDeletedLocally(ord);
       DB.designOrders.splice(idx, 1);
 
       logAudit('Antrean Desain', 'DELETE_ORDER', deletedCode, `${user.fullName} menghapus pesanan ${deletedCode} (${deletedBranch})`);
       saveDatabase();
+      if (isGasCloudConfigured()) {
+        pushDatabaseToGasCloud(true);
+      }
       closeUniversalModal();
       renderSidebar();
       renderDesignOrder();
@@ -13402,27 +13766,60 @@
     function applyGuestInlineTracker() {
       const inp = document.getElementById('guest-inline-track-inp');
       const val = (inp ? inp.value : '').trim();
+      if (DB && Array.isArray(DB.designOrders)) {
+        DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+      }
       if (!val) {
         APP_STATE.guestTrackedPhone = '';
         APP_STATE.guestTrackedOrderCode = '';
+        APP_STATE.ordFilterType = 'ALL';
+        saveActiveSessionState();
         renderDesignOrder();
+        const cntAll = getAuthorizedDesignOrders().length;
+        showToast(`Menampilkan ${cntAll} pesanan cabang Anda.`, 'info');
+        if (isGasCloudConfigured()) {
+          pullDatabaseFromGasCloud(true);
+        }
         return;
       }
-      if (/^(?:IDC|BNR)-/i.test(val)) {
+      if (/^(?:IDC|BNR)-/i.test(val) || /^[A-Z]{3}-\d{4}/i.test(val)) {
         APP_STATE.guestTrackedOrderCode = val.toUpperCase();
         APP_STATE.guestTrackedPhone = '';
-      } else {
+      } else if (normalizePhoneTail(val)) {
         APP_STATE.guestTrackedPhone = val;
         APP_STATE.guestTrackedOrderCode = '';
+      } else {
+        // Jika pengguna mengetik nama pemesan / nama cabang / kode sebagian
+        const valLower = val.toLowerCase();
+        const matched = filterDemoItems(DB.designOrders).find(o =>
+          String(o.orderId || '').toLowerCase().includes(valLower) ||
+          String(o.requesterName || '').toLowerCase().includes(valLower) ||
+          String((o.idCardSpec && o.idCardSpec.fullName) || '').toLowerCase().includes(valLower) ||
+          String((o.bannerSpec && o.bannerSpec.headline) || '').toLowerCase().includes(valLower)
+        );
+        if (matched && matched.orderId) {
+          APP_STATE.guestTrackedOrderCode = matched.orderId.toUpperCase();
+          APP_STATE.guestTrackedPhone = '';
+        } else {
+          APP_STATE.guestTrackedOrderCode = val.toUpperCase();
+          APP_STATE.guestTrackedPhone = val;
+        }
       }
+      APP_STATE.ordFilterType = 'ALL';
+      saveActiveSessionState();
       renderDesignOrder();
       const cnt = getAuthorizedDesignOrders().length;
-      showToast(`Menampilkan ${cnt} pesanan yang cocok dengan "${val}".`, cnt > 0 ? 'success' : 'info');
+      showToast(`Menampilkan ${cnt} pesanan untuk pencarian "${val}".`, cnt > 0 ? 'success' : 'info');
+      if (isGasCloudConfigured()) {
+        pullDatabaseFromGasCloud(true);
+      }
     }
 
     function resetGuestInlineTracker() {
       APP_STATE.guestTrackedPhone = '';
       APP_STATE.guestTrackedOrderCode = '';
+      APP_STATE.ordFilterType = 'ALL';
+      saveActiveSessionState();
       renderDesignOrder();
     }
 
@@ -15260,13 +15657,32 @@
     }
 
     function confirmResetDatabaseNow() {
-      DB = getInitialDatabase();
+      try {
+        localStorage.removeItem(ORDERS_BACKUP_KEY);
+        localStorage.removeItem(DELETED_ORDERS_KEY);
+      } catch (_) {}
+      DB = sanitizeDatabaseBranches(getInitialDatabase());
       saveDatabase();
       closeUniversalModal();
       refreshAppIdentity();
       navigateToModule('dashboard');
       showToast('Database telah dikembalikan ke kondisi awal.', 'info');
     }
+
+    // Sinkronisasi otomatis lintas tab browser (agar pesanan baru dari tab lain langsung terbaca)
+    window.addEventListener('storage', function(evt) {
+      if (evt && (evt.key === ORDERS_BACKUP_KEY || evt.key === STORAGE_KEY)) {
+        if (DB && Array.isArray(DB.designOrders)) {
+          DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+          renderSidebar();
+          if (APP_STATE.activeModule === 'design_order' && APP_STATE.ordActiveTab === 'queue') {
+            renderDesignOrder();
+          } else if (APP_STATE.activeModule === 'dashboard') {
+            renderDashboard();
+          }
+        }
+      }
+    });
 
     // Close global search dropdown when clicking outside
     document.addEventListener('click', function(evt) {
@@ -15281,12 +15697,20 @@
 
     window.addEventListener('DOMContentLoaded', function() {
       ensureBranchEmailAccountsExist(true);
+      if (DB && Array.isArray(DB.designOrders)) {
+        DB.designOrders = mergeDesignOrdersSafely(DB.designOrders, []);
+      }
+      const restored = restoreActiveSessionState();
       populateGuestBranchDropdown();
       const user = getCurrentUser();
+      if (restored && sessionStorage.getItem('BIM_SESSION_AUTHENTICATED') === '1') {
+        const ls = document.getElementById('login-screen');
+        if (ls) ls.classList.add('hidden');
+      }
       applyThemeMode(user.themePreference || 'light');
       refreshAppIdentity();
       runWithLoading('Menyiapkan Ruang Kerja', 'Memuat modul dan data BIM Creative Hub...', function() {
-        navigateToModule(user.role === 'GUEST' ? 'design_order' : 'dashboard');
+        navigateToModule(user.role === 'GUEST' ? 'design_order' : (APP_STATE.activeModule || 'dashboard'));
         if (isGasCloudConfigured()) {
           pullDatabaseFromGasCloud(true).then(() => {
             ensureBranchEmailAccountsExist(true);
