@@ -9940,14 +9940,17 @@
         const namaKartu = (ord.idCardSpec && ord.idCardSpec.fullName) || ord.requesterName || '';
         ref = `pesanan desain *ID Card*${namaKartu ? ` atas nama *${namaKartu}*` : ''}`;
       } else {
-        const judulBanner = (ord.bannerSpec && ord.bannerSpec.headline) ? ord.bannerSpec.headline.trim() : '';
+        let judulBanner = (ord.bannerSpec && ord.bannerSpec.headline) ? ord.bannerSpec.headline.trim() : '';
+        if (!judulBanner && ord.shortDescription && ord.shortDescription.includes('—')) {
+          judulBanner = ord.shortDescription.split('—').pop().trim();
+        }
         const ukuranBanner = (ord.bannerSpec && ord.bannerSpec.width && ord.bannerSpec.height)
           ? `${ord.bannerSpec.width} × ${ord.bannerSpec.height} ${ord.bannerSpec.unit || 'meter'}`
           : '';
         ref = `pesanan desain *Banner${judulBanner ? ' ' + judulBanner : ''}*${ukuranBanner ? ` (Ukuran *${ukuranBanner}*)` : ''}`;
       }
       const sapaan = `Halo ${ord.requesterName || 'Bapak/Ibu'},`;
-      const penutup = `Terima kasih.\n— Tim Desain ${DB.appSettings.appName || 'BIM Creative Hub'}`;
+      const penutup = `Terima kasih.\n— Tim Desain BIM CREATIVE`;
       const body = {
         printing: `${ref} sudah *selesai didesain* dan saat ini *sedang dalam proses cetak*. Kami akan mengabari kembali setelah hasil cetak siap diambil/dikirim.`,
         ready:    `${ref} sudah *selesai dicetak* dan *siap diambil/dikirim* ke ${ord.branch || 'cabang Anda'}.`,
@@ -9955,6 +9958,108 @@
         revision: `terkait ${ref}, kami membutuhkan *konfirmasi/revisi* dari Anda sebelum melanjutkan proses. Mohon balas pesan ini.`
       }[templateKey] || '';
       return `${sapaan}\n\n${templateKey === 'revision' ? 'Kami ingin menghubungi Anda ' : 'Kami informasikan bahwa '}${body}\n\n${penutup}`;
+    }
+
+    function convertDataUrlToPngBlob(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width || 800;
+            canvas.height = img.naturalHeight || img.height || 600;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(blob => {
+              if (blob) resolve(blob);
+              else reject(new Error('Gagal membuat blob gambar'));
+            }, 'image/png');
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+    }
+
+    async function copyOrderWaImageToClipboard(orderId, silent = false) {
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      const imgSrc = (ord && (ord.finalFileUrl || ord.draftPreviewUrl)) || '';
+      if (!imgSrc) {
+        if (!silent) showToast('Pilih / unggah gambar desain terlebih dahulu.', 'error');
+        return false;
+      }
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          const pngBlob = await convertDataUrlToPngBlob(imgSrc);
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+          if (!silent) showToast('Gambar desain berhasil disalin! Tekan Ctrl+V (Paste) di ruang chat WhatsApp.', 'success');
+          return true;
+        }
+      } catch (err) {
+        console.warn('Clipboard image copy warning:', err);
+      }
+      if (!silent) showToast('Browser ini tidak mendukung salin gambar otomatis. Silakan unduh gambar lalu lampirkan di WhatsApp.', 'info');
+      return false;
+    }
+
+    function handleWaModalImageUpload(inputEl, orderId) {
+      const f = inputEl && inputEl.files && inputEl.files[0];
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      if (!f || !ord) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const rawDataUrl = String(evt.target.result || '');
+        compressUploadedImageDataUrl(rawDataUrl, 1280, 0.86, function(compressed) {
+          ord.finalFileUrl = compressed;
+          ord.draftPreviewUrl = compressed;
+          saveDatabase();
+          const prevWrap = document.getElementById('ord-wa-img-preview-wrap');
+          if (prevWrap) {
+            prevWrap.innerHTML = `
+              <div class="flex items-center gap-3 pt-2">
+                <img src="${compressed}" alt="Preview Desain" class="h-16 w-auto rounded-lg border border-emerald-500/40 object-contain bg-slate-950 p-1" />
+                <div class="space-y-1 text-[11px]">
+                  <div class="font-bold text-emerald-700 dark:text-emerald-400">✓ Gambar siap dikirim bersama pesan</div>
+                  <div class="text-slate-500">Saat klik <strong>Buka WhatsApp &amp; Kirim</strong>, gambar otomatis disalin ke Clipboard — cukup tekan <strong>Ctrl + V (Paste)</strong> di chat WhatsApp.</div>
+                  <button type="button" onclick="copyOrderWaImageToClipboard('${ord.id}', false)" class="px-2.5 py-1 rounded-lg bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 font-bold hover:bg-emerald-600 hover:text-white transition">
+                    Salin Gambar Sekarang
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+          copyOrderWaImageToClipboard(ord.id, true);
+          showToast('Gambar desain dilampirkan & disalin ke Clipboard!', 'success');
+        });
+      };
+      reader.readAsDataURL(f);
+    }
+
+    async function shareOrderWaWithImageMobile(orderId) {
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      if (!ord) return;
+      const imgSrc = ord.finalFileUrl || ord.draftPreviewUrl || '';
+      const message = ((document.getElementById('ord-wa-message') || {}).value || '').trim();
+      if (!imgSrc) {
+        showToast('Unggah gambar desain terlebih dahulu untuk dibagikan.', 'error');
+        return;
+      }
+      try {
+        const blob = await convertDataUrlToPngBlob(imgSrc);
+        const file = new File([blob], `${ord.orderId || 'Desain_BIM'}.png`, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            text: message,
+            title: `Desain ${ord.orderId}`
+          });
+          return;
+        }
+      } catch (_) {}
+      await copyOrderWaImageToClipboard(orderId, false);
     }
 
     function openOrderWhatsAppModal(orderId) {
@@ -9966,15 +10071,16 @@
       const ord = DB.designOrders.find(o => o.id === orderId);
       if (!ord) return;
       const phone = getOrderContactPhone(ord);
-      const defaultKey = ord.status === 'Menunggu' ? 'working' : 'printing';
+      const defaultKey = ord.status === 'Menunggu' ? 'revision' : 'printing';
       const lastLog = (ord.waNotifications || [])[0];
+      const existingImg = ord.finalFileUrl || (ord.orderType === 'BANNER' ? ord.draftPreviewUrl : '') || '';
 
       const bodyHtml = `
         <form onsubmit="sendOrderWhatsAppSubmit(event, '${ord.id}')" class="space-y-4 text-xs">
           <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
             <div>
               <div class="font-bold text-slate-900 dark:text-white">${escapeHtml(ord.requesterName || '-')}</div>
-              <div class="text-[11px] text-slate-500">${escapeHtml(ord.orderId)} • ${escapeHtml(ord.branch || '-')} • Status: <strong>${escapeHtml(ord.status)}</strong></div>
+              <div class="text-[11px] text-slate-500">${escapeHtml(ord.branch || '-')} • Status: <strong>${escapeHtml(ord.status)}</strong></div>
             </div>
             ${lastLog ? `<div class="text-[10px] text-emerald-700 dark:text-emerald-400">Terakhir dihubungi: ${escapeHtml(lastLog.time)}<br/>oleh ${escapeHtml(lastLog.by)}</div>` : ''}
           </div>
@@ -9983,6 +10089,41 @@
             <label class="bim-label">Nomor WhatsApp Pemesan <span class="text-red-500">*</span></label>
             <input type="tel" id="ord-wa-phone" required value="${escapeHtml(phone)}" placeholder="0812xxxxxxxx" class="bim-input font-mono" />
             ${phone ? '' : '<div class="text-[10px] text-amber-600 mt-0.5">Nomor tidak tercantum di pesanan. Silakan isi manual.</div>'}
+          </div>
+
+          <!-- Lampirkan Gambar Desain agar Ikut Terkirim -->
+          <div class="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-500/30 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <i data-lucide="image" class="w-4 h-4 text-emerald-600"></i>
+                <span>Lampirkan Gambar Desain (Agar Ikut Terkirim ke WA)</span>
+              </label>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold">Otomatis Copy ke Clipboard</span>
+            </div>
+            <input type="file" accept="image/*" onchange="handleWaModalImageUpload(this, '${ord.id}')" class="w-full text-[11px] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-[#14532D] file:text-white hover:file:bg-[#16A34A] cursor-pointer" />
+            <div id="ord-wa-img-preview-wrap">
+              ${existingImg ? `
+                <div class="flex items-center gap-3 pt-2">
+                  <img src="${existingImg}" alt="Preview Desain" class="h-16 w-auto rounded-lg border border-emerald-500/40 object-contain bg-slate-950 p-1" />
+                  <div class="space-y-1 text-[11px]">
+                    <div class="font-bold text-emerald-700 dark:text-emerald-400">✓ Gambar desain sudah terlampir</div>
+                    <div class="text-slate-500">Saat klik <strong>Buka WhatsApp &amp; Kirim</strong>, gambar otomatis disalin — tinggal tekan <strong>Ctrl + V (Paste)</strong> di chat WhatsApp!</div>
+                    <div class="flex flex-wrap gap-1.5 pt-0.5">
+                      <button type="button" onclick="copyOrderWaImageToClipboard('${ord.id}', false)" class="px-2.5 py-1 rounded-lg bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 font-bold hover:bg-emerald-600 hover:text-white transition">
+                        Salin Gambar
+                      </button>
+                      <button type="button" onclick="shareOrderWaWithImageMobile('${ord.id}')" class="px-2.5 py-1 rounded-lg bg-blue-600/15 text-blue-700 dark:text-blue-300 font-bold hover:bg-blue-600 hover:text-white transition">
+                        Share Gambar + Teks (HP)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ` : `
+                <div class="text-[11px] text-slate-500">
+                  Pilih file gambar desain di atas. Saat WhatsApp terbuka dengan teks pesan, Anda tinggal tekan <strong>Ctrl + V (Paste)</strong> lalu <strong>Enter</strong> agar gambar &amp; teks terkirim menyatu seperti contoh.
+                </div>
+              `}
+            </div>
           </div>
 
           <div>
@@ -9999,16 +10140,19 @@
 
           <div>
             <label class="bim-label">Pesan (boleh diedit sebelum dikirim)</label>
-            <textarea id="ord-wa-message" rows="8" class="bim-input leading-relaxed">${escapeHtml(buildOrderWaMessage(ord, defaultKey))}</textarea>
+            <textarea id="ord-wa-message" rows="7" class="bim-input leading-relaxed">${escapeHtml(buildOrderWaMessage(ord, defaultKey))}</textarea>
           </div>
 
-          <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
+          <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap justify-end gap-2">
             <button type="button" onclick="closeUniversalModal()" class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold">Batal</button>
-            <button type="submit" class="px-5 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5A] text-white font-bold shadow-sm transition">Buka WhatsApp &amp; Kirim</button>
+            <button type="submit" class="px-5 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5A] text-white font-bold shadow-sm transition flex items-center gap-1.5">
+              <i data-lucide="send" class="w-4 h-4"></i>
+              <span>Buka WhatsApp &amp; Kirim</span>
+            </button>
           </div>
         </form>
       `;
-      openUniversalModal(`Kabari Pemesan via WhatsApp (${ord.orderId})`, bodyHtml, ' ');
+      openUniversalModal(`Kabari Pemesan via WhatsApp`, bodyHtml, ' ');
     }
 
     function applyOrderWaTemplate(orderId, templateKey) {
@@ -10017,7 +10161,7 @@
       if (ord && ta) ta.value = buildOrderWaMessage(ord, templateKey);
     }
 
-    function sendOrderWhatsAppSubmit(e, orderId) {
+    async function sendOrderWhatsAppSubmit(e, orderId) {
       if (e && e.preventDefault) e.preventDefault();
       const user = getCurrentUser();
       if (user.role === 'GUEST' || !checkPermission('design_order', 'edit')) return;
@@ -10038,7 +10182,13 @@
       const templateKey = checked ? checked.value : 'custom';
       const templateLabel = (ORDER_WA_TEMPLATES.find(t => t[0] === templateKey) || [null, 'Pesan kustom'])[1];
 
-      // Buka WhatsApp (Web/App) langsung dari klik pengguna agar tidak diblokir popup blocker
+      const hasImg = Boolean(ord.finalFileUrl || (ord.orderType === 'BANNER' && ord.draftPreviewUrl));
+      let copiedImg = false;
+      if (hasImg) {
+        copiedImg = await copyOrderWaImageToClipboard(ord.id, true);
+      }
+
+      // Buka WhatsApp (Web/App) langsung dari klik pengguna
       window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
 
       const nowStr = getNowWIB();
@@ -10055,7 +10205,11 @@
       saveDatabase();
       closeUniversalModal();
       renderDesignOrder();
-      showToast('WhatsApp dibuka. Tekan tombol Kirim di WhatsApp untuk mengirim pesan.', 'success');
+      if (copiedImg) {
+        showToast('WhatsApp dibuka & Gambar Desain sudah disalin! Tekan Ctrl+V (Paste) di WhatsApp lalu Enter.', 'success');
+      } else {
+        showToast('WhatsApp dibuka. Tekan tombol Kirim di WhatsApp untuk mengirim pesan.', 'success');
+      }
     }
 
     function handleOrderSentCheckbox(checkboxEl, orderId) {
