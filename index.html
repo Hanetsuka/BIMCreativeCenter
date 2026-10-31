@@ -1118,6 +1118,16 @@
     // =========================================================================
     // 2. RUNTIME APPLICATION STATE & PERSISTENCE LAYER
     // =========================================================================
+    const OFFICIAL_BIM_BRANCH_NAMES = [
+      'Tuban', 'Bangilan', 'Plumpang', 'Kerek', 'Rengel',
+      'Palang', 'Merakurak', 'Jatirogo', 'Sumberrejo', 'Babat',
+      'Brondong', 'Soko', 'Jenu', 'Semanding', 'Bancar',
+      'Tambakboyo', 'Singgahan', 'Maduran', 'Sugio', 'Kedungadem',
+      'Karanggeneng', 'Bungah', 'Dukun', 'Dander', 'Kapas',
+      'Baureno', 'Paciran', 'Jombang', 'Sidayu', 'Ngimbang'
+    ];
+    const OFFICIAL_BIM_BRANCHES = OFFICIAL_BIM_BRANCH_NAMES.map(b => `Cabang ${b}`);
+
     let DB = loadDatabase();
     let APP_STATE = {
       currentUserId: 'usr_master',
@@ -1197,16 +1207,6 @@
     };
 
     let chartInstances = {};
-
-    const OFFICIAL_BIM_BRANCH_NAMES = [
-      'Tuban', 'Bangilan', 'Plumpang', 'Kerek', 'Rengel',
-      'Palang', 'Merakurak', 'Jatirogo', 'Sumberrejo', 'Babat',
-      'Brondong', 'Soko', 'Jenu', 'Semanding', 'Bancar',
-      'Tambakboyo', 'Singgahan', 'Maduran', 'Sugio', 'Kedungadem',
-      'Karanggeneng', 'Bungah', 'Dukun', 'Dander', 'Kapas',
-      'Baureno', 'Paciran', 'Jombang', 'Sidayu', 'Ngimbang'
-    ];
-    const OFFICIAL_BIM_BRANCHES = OFFICIAL_BIM_BRANCH_NAMES.map(b => `Cabang ${b}`);
 
     function normalizeBranchName(name) {
       const n = String(name || '').trim();
