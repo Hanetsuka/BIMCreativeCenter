@@ -1436,12 +1436,31 @@
       return false;
     }
 
-    // Backend-equivalent data query isolation for Design Orders (Guest only sees own orders!)
+    function normalizeBranchKey(branchName) {
+      return String(branchName || '')
+        .toLowerCase()
+        .replace(/^cabang\s+/i, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    }
+
+    function isOrderVisibleToGuest(ord, user) {
+      if (!ord || !user) return false;
+      const userBranchKey = normalizeBranchKey(user.branch);
+      const ordBranchKey = normalizeBranchKey(ord.branch);
+      // Isolasi penuh antar cabang: Tamu hanya bisa melihat pesanan dari cabangnya sendiri
+      if (userBranchKey && ordBranchKey) {
+        return userBranchKey === ordBranchKey;
+      }
+      return ord.requesterId === user.id;
+    }
+
+    // Backend-equivalent data query isolation for Design Orders (Guest only sees own branch orders!)
     function getAuthorizedDesignOrders() {
       const user = getCurrentUser();
       const baseList = filterDemoItems(DB.designOrders);
       if (user.role === 'GUEST') {
-        return baseList.filter(ord => ord.requesterId === user.id);
+        return baseList.filter(ord => isOrderVisibleToGuest(ord, user));
       }
       return baseList;
     }
@@ -1767,12 +1786,26 @@
       updateNotificationBadge();
     }
 
-    function updateNotificationBadge() {
-      const user = getCurrentUser();
-      const visibleNotifs = DB.notifications.filter(n =>
+    function isNotificationVisibleToUser(n, user) {
+      if (!n || !user) return false;
+      if (user.role === 'GUEST') {
+        const authorizedOrderIds = new Set(getAuthorizedDesignOrders().map(o => o.orderId));
+        const text = `${n.title || ''} ${n.message || ''}`;
+        const codeMatch = text.match(/\b(?:IDC|BNR)-\d{8}-\d{3}\b/);
+        if (codeMatch) {
+          return authorizedOrderIds.has(codeMatch[0]);
+        }
+        return Boolean(n.targetUserIds && n.targetUserIds.includes(user.id));
+      }
+      return Boolean(
         (n.targetRoles && n.targetRoles.includes(user.role)) ||
         (n.targetUserIds && n.targetUserIds.includes(user.id))
       );
+    }
+
+    function updateNotificationBadge() {
+      const user = getCurrentUser();
+      const visibleNotifs = DB.notifications.filter(n => isNotificationVisibleToUser(n, user));
       const unreadCount = visibleNotifs.filter(n => !n.isRead).length;
       const badge = document.getElementById('topbar-notif-count');
       if (badge) {
@@ -2348,14 +2381,26 @@
       }
 
       runWithLoading('Menyiapkan Menu Order Desain...', `Selamat datang, ${guestName} (${guestBranch})`, () => {
-        // Use or update the active Guest account in DB.users so all RBAC & tests work seamlessly
-        let guestUser = DB.users.find(u => u.id === 'usr_guest_sby') || DB.users.find(u => u.role === 'GUEST');
+        // Buat atau gunakan akun Tamu khusus untuk cabang ini agar data antar cabang terisolasi penuh
+        const branchSlug = normalizeBranchKey(guestBranch).replace(/\s+/g, '_') || 'manual';
+        const targetGuestId = branchSlug === 'surabaya'
+          ? 'usr_guest_sby'
+          : (branchSlug === 'tuban' ? 'usr_guest_tbn' : `usr_guest_br_${branchSlug}`);
+
+        // Pastikan usr_guest_sby tetap berstatus Cabang Surabaya jika sebelumnya pernah tertimpa cabang lain
+        const defaultSbyGuest = DB.users.find(u => u.id === 'usr_guest_sby');
+        if (defaultSbyGuest && branchSlug !== 'surabaya' && normalizeBranchKey(defaultSbyGuest.branch) !== 'surabaya') {
+          defaultSbyGuest.branch = 'Cabang Surabaya';
+        }
+
+        let guestUser = DB.users.find(u => u.id === targetGuestId) ||
+                        DB.users.find(u => u.role === 'GUEST' && normalizeBranchKey(u.branch) === normalizeBranchKey(guestBranch));
         if (!guestUser) {
           guestUser = {
-            id: 'usr_guest_manual',
+            id: targetGuestId,
             fullName: guestName,
-            username: 'tamu.cabang',
-            email: 'tamu@bim.co.id',
+            username: `tamu.${branchSlug}`,
+            email: `tamu.${branchSlug}@bim.co.id`,
             passwordHash: 'BimGuest#2026',
             phone: '',
             role: 'GUEST',
@@ -10315,9 +10360,9 @@
         pushNotification(
           'Order Desain',
           `Desain Selesai & Terkirim: ${ord.orderId}`,
-          `Pesanan ${ord.orderId} telah diselesaikan dan dikirim oleh ${user.fullName}.`,
+          `Pesanan ${ord.orderId} (${ord.branch}) telah diselesaikan dan dikirim oleh ${user.fullName}.`,
           'design_order',
-          ['MASTER', 'USER', 'GUEST'],
+          ['MASTER', 'USER'],
           [ord.requesterId]
         );
 
@@ -11088,9 +11133,9 @@
         return;
       }
       const user = getCurrentUser();
-      if (user.role === 'GUEST' && ord.requesterId !== user.id) {
-        logAudit('Antrean Desain', 'ACCESS_DENIED', ord.orderId, `Guest ${user.fullName} mencoba membuka detail order milik pengguna lain`);
-        showToast('Akses Ditolak: Anda hanya dapat melihat pesanan milik Anda sendiri.', 'error');
+      if (user.role === 'GUEST' && !isOrderVisibleToGuest(ord, user)) {
+        logAudit('Antrean Desain', 'ACCESS_DENIED', ord.orderId, `Guest ${user.fullName} (${user.branch}) mencoba membuka detail order cabang lain (${ord.branch})`);
+        showToast('Akses Ditolak: Anda hanya dapat melihat pesanan dari cabang Anda sendiri.', 'error');
         return;
       }
 
@@ -11677,10 +11722,7 @@
       const container = document.getElementById('view-notifications');
       if (!container) return;
       const user = getCurrentUser();
-      const list = DB.notifications.filter(n =>
-        (n.targetRoles && n.targetRoles.includes(user.role)) ||
-        (n.targetUserIds && n.targetUserIds.includes(user.id))
-      );
+      const list = DB.notifications.filter(n => isNotificationVisibleToUser(n, user));
 
       container.innerHTML = `
         <div class="bim-card p-5 space-y-4">
@@ -13007,10 +13049,11 @@
 
       // Test 3: Strict Guest Order Isolation (Surabaya Guest cannot see Tuban Guest orders)
       APP_STATE.currentUserId = 'usr_guest_sby';
+      const sbyGuest = getCurrentUser();
       const sbyVisibleOrders = getAuthorizedDesignOrders();
-      const leakedOrder = sbyVisibleOrders.some(o => o.requesterId !== 'usr_guest_sby');
+      const leakedOrder = sbyVisibleOrders.some(o => !isOrderVisibleToGuest(o, sbyGuest));
       APP_STATE.currentUserId = savedUserId; // Restore
-      assert('T03: Isolasi Data Order Desain Tamu (Lintas Pengguna)', 'Keamanan Data', sbyVisibleOrders.length > 0 && !leakedOrder, `Tamu Surabaya hanya melihat ${sbyVisibleOrders.length} order miliknya sendiri (0 kebocoran order cabang lain).`);
+      assert('T03: Isolasi Data Order Desain Tamu (Lintas Cabang & Pengguna)', 'Keamanan Data', sbyVisibleOrders.length > 0 && !leakedOrder, `Tamu ${sbyGuest.branch} hanya melihat ${sbyVisibleOrders.length} order cabangnya sendiri (0 kebocoran order cabang lain).`);
 
       // Test 4: Statistical Math & Zero-Division Guard
       const grZero = computeFollowerGrowth(0, 500);
