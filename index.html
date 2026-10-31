@@ -4319,14 +4319,77 @@
       return conflicts;
     }
 
+        const MONTH_NAMES_ID = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+
+    function getCalDateDiffDays(targetDateStr) {
+      if (!targetDateStr) return null;
+      const now = new Date();
+      const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const targetParts = targetDateStr.split('-').map(Number);
+      const todayParts = todayYMD.split('-').map(Number);
+      if (targetParts.length !== 3 || todayParts.length !== 3) return null;
+      const dTarget = new Date(targetParts[0], targetParts[1] - 1, targetParts[2]);
+      const dToday = new Date(todayParts[0], todayParts[1] - 1, todayParts[2]);
+      return Math.round((dTarget - dToday) / (1000 * 60 * 60 * 24));
+    }
+
+    function changeCalMonth(delta) {
+      let m = (typeof APP_STATE.calMonth === 'number' ? APP_STATE.calMonth : 9) + delta;
+      let y = typeof APP_STATE.calYear === 'number' ? APP_STATE.calYear : 2026;
+      if (m > 11) {
+        m = 0;
+        y += 1;
+      } else if (m < 0) {
+        m = 11;
+        y -= 1;
+      }
+      APP_STATE.calMonth = m;
+      APP_STATE.calYear = y;
+      const d = (APP_STATE.calSelectedDate || '').slice(8, 10) || '01';
+      const daysInNewMonth = new Date(y, m + 1, 0).getDate();
+      const validDay = Math.min(parseInt(d, 10) || 1, daysInNewMonth);
+      APP_STATE.calSelectedDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(validDay).padStart(2, '0')}`;
+      APP_STATE.calRightScope = 'MONTH';
+      renderCalendar();
+    }
+
+    function setCalMonthYear(newMonth, newYear) {
+      APP_STATE.calMonth = parseInt(newMonth, 10);
+      APP_STATE.calYear = parseInt(newYear, 10);
+      const d = (APP_STATE.calSelectedDate || '').slice(8, 10) || '01';
+      const daysInNewMonth = new Date(APP_STATE.calYear, APP_STATE.calMonth + 1, 0).getDate();
+      const validDay = Math.min(parseInt(d, 10) || 1, daysInNewMonth);
+      APP_STATE.calSelectedDate = `${APP_STATE.calYear}-${String(APP_STATE.calMonth + 1).padStart(2, '0')}-${String(validDay).padStart(2, '0')}`;
+      APP_STATE.calRightScope = 'MONTH';
+      renderCalendar();
+    }
+
+    function goToCurrentCalMonth() {
+      const now = new Date();
+      APP_STATE.calYear = now.getFullYear();
+      APP_STATE.calMonth = now.getMonth();
+      const y = APP_STATE.calYear;
+      const m = String(APP_STATE.calMonth + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      APP_STATE.calSelectedDate = `${y}-${m}-${d}`;
+      APP_STATE.calRightScope = 'DATE';
+      renderCalendar();
+    }
+
     function selectCalDate(dateStr) {
       const wasSameDate = APP_STATE.calSelectedDate === dateStr;
       APP_STATE.calSelectedDate = dateStr;
-      const sourceItems = filterDemoItems(DB.contentItems);
-      const hasItemsOnDate = sourceItems.some(c => c.publishDate === dateStr);
+      const parts = dateStr.split('-').map(Number);
+      if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        APP_STATE.calYear = parts[0];
+        APP_STATE.calMonth = parts[1] - 1;
+      }
       if (wasSameDate && APP_STATE.calRightScope === 'DATE') {
-        APP_STATE.calRightScope = 'ALL';
-      } else if (hasItemsOnDate) {
+        APP_STATE.calRightScope = 'MONTH';
+      } else {
         APP_STATE.calRightScope = 'DATE';
       }
       renderCalendar();
@@ -4337,9 +4400,34 @@
       renderCalendar();
     }
 
+    function getCalWeekDates(centerDateStr) {
+      const parts = (centerDateStr || '2026-10-19').split('-').map(Number);
+      const d = new Date(parts[0], parts[1] - 1, parts[2] || 1);
+      const dayOfWeek = (d.getDay() + 6) % 7; // Mon = 0, Sun = 6
+      d.setDate(d.getDate() - dayOfWeek); // move to Monday
+      const week = [];
+      for (let i = 0; i < 7; i++) {
+        const cur = new Date(d);
+        cur.setDate(d.getDate() + i);
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, '0');
+        const day = String(cur.getDate()).padStart(2, '0');
+        week.push(`${y}-${m}-${day}`);
+      }
+      return week;
+    }
+
     function renderCalendar() {
       const container = document.getElementById('view-calendar');
       if (!container) return;
+
+      const curYear = typeof APP_STATE.calYear === 'number' ? APP_STATE.calYear : 2026;
+      const curMonth = typeof APP_STATE.calMonth === 'number' ? APP_STATE.calMonth : 9; // 0-based: 9 = October
+      const curMonthStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+      const monthName = MONTH_NAMES_ID[curMonth] || 'Oktober';
+
+      const nowObj = new Date();
+      const todayStr = `${nowObj.getFullYear()}-${String(nowObj.getMonth() + 1).padStart(2, '0')}-${String(nowObj.getDate()).padStart(2, '0')}`;
 
       const sourceItems = filterDemoItems(DB.contentItems);
       const allItems = sourceItems.filter(c => {
@@ -4350,8 +4438,26 @@
       });
 
       const conflictIds = detectScheduleConflicts(allItems);
-      const selDate = APP_STATE.calSelectedDate || '2026-10-19';
-      const rightScope = APP_STATE.calRightScope || 'ALL';
+      const selDate = APP_STATE.calSelectedDate || `${curMonthStr}-01`;
+      const rightScope = APP_STATE.calRightScope || 'MONTH';
+
+      // Items in the currently viewed month
+      const monthItems = allItems.filter(c => String(c.publishDate || '').startsWith(curMonthStr));
+
+      // Reminders: upcoming content scheduled within next 14 days
+      const upcomingReminderItems = allItems.filter(c => {
+        if (!c.publishDate) return false;
+        if (c.productionStatus === 'Dipublikasikan' || c.productionStatus === 'Dibatalkan') return false;
+        const diff = getCalDateDiffDays(c.publishDate);
+        return diff !== null && diff >= 0 && diff <= 14;
+      }).sort((a, b) => (String(a.publishDate) + String(a.publishTime || '')).localeCompare(String(b.publishDate) + String(b.publishTime || '')));
+
+      // Active tasks/content in current month
+      const monthReminders = monthItems.filter(c => {
+        if (!c.publishDate) return false;
+        if (c.productionStatus === 'Dipublikasikan' || c.productionStatus === 'Dibatalkan') return false;
+        return true;
+      });
 
       const statusColors = {
         'Ide': 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-400/30',
@@ -4369,16 +4475,29 @@
       // Build LEFT column: Interactive Calendar Grid
       let leftCalendarHtml = '';
       if (APP_STATE.calViewMode === 'weekly') {
-        const weekDates = ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'];
+        const weekDates = getCalWeekDates(selDate);
         leftCalendarHtml = `
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             ${weekDates.map(dStr => {
               const dItems = allItems.filter(c => c.publishDate === dStr);
               const isSel = selDate === dStr;
+              const isToday = (dStr === todayStr);
+              const diff = getCalDateDiffDays(dStr);
+              let remBadge = '';
+              if (dItems.length > 0) {
+                if (diff === 0) remBadge = '<span class="px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-600 dark:text-red-400 text-[10px] font-extrabold animate-pulse">🔔 Hari Ini</span>';
+                else if (diff === 1) remBadge = '<span class="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold">⏰ Besok</span>';
+                else if (diff > 1 && diff <= 7) remBadge = `<span class="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold">📅 H-${diff}</span>`;
+                else remBadge = `<span class="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold">${dItems.length} Jadwal</span>`;
+              }
+
               return `
-                <div onclick="selectCalDate('${dStr}')" class="p-4 rounded-2xl border cursor-pointer transition ${isSel ? 'border-[#16A34A] ring-2 ring-[#16A34A]/25 bg-emerald-50/40 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111C2E] hover:border-emerald-500/40'} space-y-2.5">
+                <div onclick="selectCalDate('${dStr}')" class="p-4 rounded-2xl border cursor-pointer transition ${isSel ? 'border-[#16A34A] ring-2 ring-[#16A34A]/25 bg-emerald-50/40 dark:bg-emerald-950/20' : (isToday ? 'border-emerald-500/60 bg-emerald-50/20 dark:bg-emerald-950/10' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111C2E] hover:border-emerald-500/40')} space-y-2.5">
                   <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                    <span class="text-xs font-extrabold ${isSel ? 'text-[#14532D] dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}">${dStr}</span>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-extrabold ${isSel ? 'text-[#14532D] dark:text-emerald-400' : (isToday ? 'text-emerald-700 dark:text-emerald-300 font-black' : 'text-slate-700 dark:text-slate-200')}">${dStr}</span>
+                      ${remBadge}
+                    </div>
                     <button type="button" onclick="event.stopPropagation(); openContentModal(null, '${dStr}')" class="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold hover:bg-emerald-500/20">+ Kegiatan</button>
                   </div>
                   ${dItems.length === 0 ? '<div class="text-xs text-slate-400 py-3 text-center">Belum ada kegiatan</div>' : dItems.map(item => `
@@ -4396,27 +4515,65 @@
           </div>
         `;
       } else {
-        // Default Monthly Calendar Grid on Left Side
-        const daysInOct = 31;
-        const startOffset = 3; // Oct 1, 2026 is Thursday (Mon=0, Tue=1, Wed=2, Thu=3)
+        // Dynamic Monthly Calendar Grid on Left Side
+        const daysInCurrentMonth = new Date(curYear, curMonth + 1, 0).getDate();
+        const firstDayOfWeek = new Date(curYear, curMonth, 1).getDay(); // 0 is Sun
+        const startOffset = (firstDayOfWeek + 6) % 7; // Mon = 0, Sun = 6
+        const daysInPrevMonth = new Date(curYear, curMonth, 0).getDate();
+
         let cellsHtml = '';
+
+        // Leading cells: Days from previous month
         for (let i = 0; i < startOffset; i++) {
-          cellsHtml += `<div class="min-h-[88px] p-2 bg-slate-100/50 dark:bg-slate-900/30 border border-slate-200/40 dark:border-slate-800/40 rounded-2xl opacity-40"></div>`;
+          const prevDayNum = daysInPrevMonth - startOffset + 1 + i;
+          const prevMonthNum = curMonth === 0 ? 12 : curMonth;
+          const prevYearNum = curMonth === 0 ? curYear - 1 : curYear;
+          const prevDateStr = `${prevYearNum}-${String(prevMonthNum).padStart(2, '0')}-${String(prevDayNum).padStart(2, '0')}`;
+          const prevDayItems = allItems.filter(c => c.publishDate === prevDateStr);
+
+          cellsHtml += `
+            <div onclick="changeCalMonth(-1); setTimeout(() => selectCalDate('${prevDateStr}'), 50);"
+                 class="min-h-[92px] p-2 bg-slate-100/40 dark:bg-slate-900/20 border border-slate-200/40 dark:border-slate-800/40 rounded-2xl opacity-40 hover:opacity-85 cursor-pointer transition flex flex-col justify-between group"
+                 title="Buka bulan sebelumnya: ${prevDateStr}">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">${prevDayNum}</span>
+                ${prevDayItems.length > 0 ? `<span class="px-1.5 py-0.5 rounded-full bg-slate-500/20 text-slate-500 text-[9px] font-bold">🔔 ${prevDayItems.length}</span>` : ''}
+              </div>
+              <div class="text-[9px] text-slate-400 italic">Bulan Lalu</div>
+            </div>
+          `;
         }
-        for (let day = 1; day <= daysInOct; day++) {
-          const dateStr = `2026-10-${String(day).padStart(2, '0')}`;
+
+        // Days of current month
+        for (let day = 1; day <= daysInCurrentMonth; day++) {
+          const dateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const dayItems = allItems.filter(c => c.publishDate === dateStr);
-          const isToday = dateStr === '2026-10-19';
+          const isToday = (dateStr === todayStr);
           const isSelected = selDate === dateStr;
+          const diff = getCalDateDiffDays(dateStr);
+
+          let reminderBadgeHtml = '';
+          if (dayItems.length > 0) {
+            if (diff === 0) {
+              reminderBadgeHtml = `<span class="px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-600 dark:text-red-400 text-[9px] font-black flex items-center gap-0.5 border border-red-500/30 animate-pulse" title="HARI INI: ${dayItems.length} kegiatan konten!">🔔 ${dayItems.length} Hari Ini</span>`;
+            } else if (diff === 1) {
+              reminderBadgeHtml = `<span class="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[9px] font-black flex items-center gap-0.5 border border-amber-500/30" title="BESOK: ${dayItems.length} kegiatan konten">⏰ ${dayItems.length} Besok</span>`;
+            } else if (diff > 1 && diff <= 7) {
+              reminderBadgeHtml = `<span class="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[9px] font-extrabold flex items-center gap-0.5 border border-emerald-500/30" title="H-${diff}: ${dayItems.length} kegiatan">📅 ${dayItems.length} (H-${diff})</span>`;
+            } else {
+              reminderBadgeHtml = `<span class="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold" title="${dayItems.length} kegiatan dijadwalkan">🔔 ${dayItems.length}</span>`;
+            }
+          }
+
           cellsHtml += `
             <div onclick="selectCalDate('${dateStr}')"
                  class="min-h-[92px] p-2.5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between group ${
                    isSelected
                      ? 'border-[#14532D] dark:border-emerald-500 ring-2 ring-[#16A34A]/25 bg-emerald-50/60 dark:bg-emerald-950/35 shadow-sm'
                      : isToday
-                     ? 'border-emerald-500/60 bg-emerald-50/25 dark:bg-emerald-950/15'
+                     ? 'border-emerald-500/70 bg-emerald-50/30 dark:bg-emerald-950/25 ring-1 ring-emerald-500/30'
                      : dayItems.length > 0
-                     ? 'border-emerald-500/30 bg-white dark:bg-[#111C2E] hover:border-emerald-500/60 hover:shadow-xs'
+                     ? 'border-emerald-500/40 bg-white dark:bg-[#111C2E] hover:border-emerald-500/70 hover:shadow-xs'
                      : 'border-slate-200/80 dark:border-slate-800/90 bg-white dark:bg-[#111C2E] hover:border-emerald-500/40'
                  }"
                  ondragover="handleCalDragOver(event)"
@@ -4427,11 +4584,11 @@
                   isSelected
                     ? 'bg-[#14532D] text-white shadow-2xs'
                     : isToday
-                    ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300'
+                    ? 'bg-emerald-600 text-white font-black'
                     : 'text-slate-700 dark:text-slate-300'
                 }">${day}</span>
                 <div class="flex items-center gap-1">
-                  ${dayItems.length > 0 ? `<span class="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold">${dayItems.length}</span>` : ''}
+                  ${reminderBadgeHtml}
                   <button type="button" onclick="event.stopPropagation(); openContentModal(null, '${dateStr}')" class="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 transition" title="Tambah Kegiatan pada ${dateStr}">
                     <i data-lucide="plus" class="w-3 h-3"></i>
                   </button>
@@ -4456,6 +4613,28 @@
           `;
         }
 
+        // Trailing cells: Days from next month
+        const totalRendered = startOffset + daysInCurrentMonth;
+        const remainder = (7 - (totalRendered % 7)) % 7;
+        for (let j = 1; j <= remainder; j++) {
+          const nextMonthNum = curMonth === 11 ? 1 : curMonth + 2;
+          const nextYearNum = curMonth === 11 ? curYear + 1 : curYear;
+          const nextDateStr = `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
+          const nextDayItems = allItems.filter(c => c.publishDate === nextDateStr);
+
+          cellsHtml += `
+            <div onclick="changeCalMonth(1); setTimeout(() => selectCalDate('${nextDateStr}'), 50);"
+                 class="min-h-[92px] p-2 bg-slate-100/40 dark:bg-slate-900/20 border border-slate-200/40 dark:border-slate-800/40 rounded-2xl opacity-40 hover:opacity-85 cursor-pointer transition flex flex-col justify-between group"
+                 title="Buka bulan selanjutnya: ${nextDateStr}">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">${j}</span>
+                ${nextDayItems.length > 0 ? `<span class="px-1.5 py-0.5 rounded-full bg-slate-500/20 text-slate-500 text-[9px] font-bold">🔔 ${nextDayItems.length}</span>` : ''}
+              </div>
+              <div class="text-[9px] text-slate-400 italic">Bulan Depan</div>
+            </div>
+          `;
+        }
+
         leftCalendarHtml = `
           <div class="grid grid-cols-7 gap-2 text-center text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 pb-1">
             <div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div><div>Min</div>
@@ -4473,7 +4652,12 @@
         return String(a.publishTime || '').localeCompare(String(b.publishTime || ''));
       });
       const selectedDateItems = sortedAll.filter(c => c.publishDate === selDate);
-      const displayedActivities = rightScope === 'DATE' ? selectedDateItems : sortedAll;
+
+      let displayedActivities = monthItems;
+      if (rightScope === 'DATE') displayedActivities = selectedDateItems;
+      else if (rightScope === 'UPCOMING') displayedActivities = upcomingReminderItems;
+      else if (rightScope === 'ALL') displayedActivities = sortedAll;
+      else displayedActivities = monthItems;
 
       container.innerHTML = `
         <!-- Toolbar: Filter & Quick Actions -->
@@ -4495,6 +4679,11 @@
               ? `<span class="px-3 py-1 rounded-xl bg-red-600/15 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-bold">${conflictIds.size} Jadwal Bentrok</span>`
               : `<span class="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-xs font-bold">Jadwal Aman (0 Bentrok)</span>`
             }
+
+            <span class="px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+              <i data-lucide="bell-ring" class="w-3.5 h-3.5"></i>
+              <span>${upcomingReminderItems.length} Pengingat Aktif</span>
+            </span>
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
@@ -4527,27 +4716,92 @@
 
         <!-- SPLIT VIEW: LEFT = KALENDER, RIGHT = LIST KEGIATANNYA -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <!-- SEBELAH KIRI: KALENDER KONTEN -->
+          <!-- SEBELAH KIRI: KALENDER KONTEN & NAVIGASI BULAN -->
           <div class="lg:col-span-7 bim-card p-5 sm:p-6 space-y-4">
-            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3.5">
+            
+            <!-- Dynamic Month Navigation & Selector Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3.5">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-2xl bg-emerald-500/10 text-[#16A34A] flex items-center justify-center shrink-0">
                   <i data-lucide="calendar-days" class="w-5 h-5"></i>
                 </div>
                 <div>
-                  <h3 class="text-base font-extrabold font-display text-slate-900 dark:text-white">Kalender Konten — Oktober 2026</h3>
-                  <p class="text-xs text-slate-500">Klik tanggal untuk memfilter kegiatan atau tarik jadwal antar tanggal</p>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" onclick="changeCalMonth(-1)" class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition" title="Lihat Bulan Sebelumnya">
+                      <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                    </button>
+
+                    <div class="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                      <select onchange="setCalMonthYear(this.value, APP_STATE.calYear)" class="text-sm font-extrabold bg-transparent border-0 text-slate-900 dark:text-white cursor-pointer focus:ring-0 pr-1 py-0.5">
+                        ${MONTH_NAMES_ID.map((mName, mIdx) => `<option value="${mIdx}" ${mIdx === curMonth ? 'selected' : ''} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">${mName}</option>`).join('')}
+                      </select>
+                      <select onchange="setCalMonthYear(APP_STATE.calMonth, this.value)" class="text-sm font-extrabold bg-transparent border-0 text-slate-900 dark:text-white cursor-pointer focus:ring-0 pl-1 py-0.5">
+                        ${[2024, 2025, 2026, 2027, 2028, 2029].map(y => `<option value="${y}" ${y === curYear ? 'selected' : ''} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">${y}</option>`).join('')}
+                      </select>
+                    </div>
+
+                    <button type="button" onclick="changeCalMonth(1)" class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition" title="Lihat Bulan Selanjutnya">
+                      <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    </button>
+
+                    <button type="button" onclick="goToCurrentCalMonth()" class="px-2.5 py-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs font-bold transition">
+                      Bulan Ini
+                    </button>
+                  </div>
+                  <p class="text-[11px] text-slate-500 mt-1">Pindah bulan atau pilih tahun untuk menjadwalkan konten &amp; melihat jadwal sebelumnya</p>
                 </div>
               </div>
-              <span class="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                Tanggal Terpilih: <strong>${selDate}</strong>
-              </span>
+
+              <div class="flex items-center gap-2 self-start sm:self-center">
+                <span class="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                  Tanggal: <strong>${selDate}</strong>
+                </span>
+                <button type="button" onclick="openContentModal(null, '${selDate}')" class="px-3 py-1.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1 shadow-2xs transition">
+                  <i data-lucide="plus" class="w-3.5 h-3.5 text-[#F4B942]"></i>
+                  <span>+ Tambah</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Reminder Notification Banner: Pengingat Jadwal Terdekat & Kegiatan Aktif -->
+            <div class="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-blue-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                  <i data-lucide="bell-ring" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <div class="text-xs font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>Pengingat Jadwal Terdekat</span>
+                    <span class="px-2 py-0.5 rounded-full ${upcomingReminderItems.length > 0 ? 'bg-amber-500/20 text-amber-800 dark:text-amber-300 font-extrabold' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'} text-[10px]">
+                      ${upcomingReminderItems.length > 0 ? `${upcomingReminderItems.length} Menunggu Tayang` : 'Semua Beres'}
+                    </span>
+                  </div>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                    ${monthReminders.length > 0 ? `Terdapat <strong>${monthReminders.length} kegiatan aktif</strong> pada bulan ${monthName} ${curYear}.` : `Belum ada jadwal kegiatan pada bulan ${monthName} ${curYear}.`}
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 overflow-x-auto py-0.5">
+                ${upcomingReminderItems.slice(0, 3).map(u => {
+                  const diffDays = getCalDateDiffDays(u.publishDate);
+                  const tagText = diffDays === 0 ? 'HARI INI' : (diffDays === 1 ? 'BESOK' : `H-${diffDays}`);
+                  const tagColor = diffDays === 0 ? 'bg-red-500 text-white animate-pulse' : (diffDays === 1 ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white');
+                  return `
+                    <div onclick="selectCalDate('${u.publishDate}'); setCalRightScope('DATE');" class="cursor-pointer shrink-0 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-emerald-500 transition text-[11px] flex items-center gap-1.5 shadow-2xs" title="${escapeHtml(u.title)} (${u.publishDate} ${u.publishTime})">
+                      <span class="px-1.5 py-0.2 rounded-md text-[9px] font-black ${tagColor}">${tagText}</span>
+                      <span class="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[110px]">${escapeHtml(u.title)}</span>
+                    </div>
+                  `;
+                }).join('')}
+                ${upcomingReminderItems.length > 3 ? `<button type="button" onclick="setCalRightScope('UPCOMING')" class="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline shrink-0 px-1">+${upcomingReminderItems.length - 3} lagi</button>` : ''}
+              </div>
             </div>
 
             ${leftCalendarHtml}
           </div>
 
-          <!-- SEBELAH KANAN: LIST KEGIATANNYA -->
+          <!-- SEBELAH KANAN: LIST KEGIATAN DENGAN PENGINGAT -->
           <div class="lg:col-span-5 bim-card p-5 sm:p-6 flex flex-col space-y-4 lg:sticky lg:top-20">
             <div class="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3.5">
               <div class="flex items-center gap-3">
@@ -4565,13 +4819,16 @@
               </button>
             </div>
 
-            <!-- Filter Tab inside Right Panel: Semua Kegiatan vs Tanggal Terpilih -->
-            <div class="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 text-xs">
-              <button type="button" onclick="setCalRightScope('ALL')" class="py-2 px-3 rounded-lg font-bold transition ${rightScope === 'ALL' ? 'bg-[#14532D] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}">
-                Semua Kegiatan (${sortedAll.length})
+            <!-- Filter Tab inside Right Panel: Bulan Ini | Tanggal Terpilih | Pengingat -->
+            <div class="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 text-xs">
+              <button type="button" onclick="setCalRightScope('MONTH')" class="py-2 px-1 rounded-lg font-bold transition text-center truncate ${rightScope === 'MONTH' ? 'bg-[#14532D] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}">
+                ${monthName.slice(0, 3)} (${monthItems.length})
               </button>
-              <button type="button" onclick="setCalRightScope('DATE')" class="py-2 px-3 rounded-lg font-bold transition ${rightScope === 'DATE' ? 'bg-[#14532D] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}">
-                Tanggal ${selDate.slice(8)} Okt (${selectedDateItems.length})
+              <button type="button" onclick="setCalRightScope('DATE')" class="py-2 px-1 rounded-lg font-bold transition text-center truncate ${rightScope === 'DATE' ? 'bg-[#14532D] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}">
+                Tgl ${selDate.slice(8)} (${selectedDateItems.length})
+              </button>
+              <button type="button" onclick="setCalRightScope('UPCOMING')" class="py-2 px-1 rounded-lg font-bold transition text-center truncate ${rightScope === 'UPCOMING' ? 'bg-[#14532D] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}">
+                🔔 Pengingat (${upcomingReminderItems.length})
               </button>
             </div>
 
@@ -4582,10 +4839,12 @@
                   <div class="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
                     <i data-lucide="calendar-x" class="w-5 h-5"></i>
                   </div>
-                  <div class="text-sm font-bold text-slate-800 dark:text-slate-200">Belum Ada Kegiatan di Tanggal ${selDate}</div>
-                  <p class="text-xs text-slate-500">Klik tombol di bawah untuk menambahkan kegiatan baru atau lihat tab Semua Kegiatan.</p>
+                  <div class="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    ${rightScope === 'DATE' ? `Belum Ada Kegiatan di Tanggal ${selDate}` : (rightScope === 'UPCOMING' ? 'Tidak Ada Pengingat Jadwal Mendesak' : `Belum Ada Kegiatan di Bulan ${monthName} ${curYear}`)}
+                  </div>
+                  <p class="text-xs text-slate-500">Klik tombol di bawah untuk menambahkan kegiatan baru pada tanggal atau bulan ini.</p>
                   <div class="flex items-center justify-center gap-2 pt-1">
-                    ${rightScope === 'DATE' ? `<button type="button" onclick="setCalRightScope('ALL')" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Lihat Semua (${sortedAll.length})</button>` : ''}
+                    ${rightScope !== 'MONTH' ? `<button type="button" onclick="setCalRightScope('MONTH')" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Lihat Bulan Ini (${monthItems.length})</button>` : ''}
                     <button type="button" onclick="openContentModal(null, '${selDate}')" class="px-4 py-2 rounded-xl bg-[#14532D] text-white text-xs font-bold">
                       + Tambah Kegiatan
                     </button>
@@ -4594,20 +4853,37 @@
               ` : displayedActivities.map(item => {
                 const stClass = statusColors[item.productionStatus] || statusColors['Draft'];
                 const hasConflict = conflictIds.has(item.id);
-                const dayNum = String(item.publishDate || '').slice(8, 10) || '19';
+                const dayNum = String(item.publishDate || '').slice(8, 10) || '01';
+                const diff = getCalDateDiffDays(item.publishDate);
+                
+                let urgencyBadge = '';
+                if (item.productionStatus === 'Dipublikasikan') {
+                  urgencyBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">✓ Tayang</span>';
+                } else if (diff === 0) {
+                  urgencyBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 flex items-center gap-1 animate-pulse">🔔 HARI INI</span>';
+                } else if (diff === 1) {
+                  urgencyBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">⏰ BESOK</span>';
+                } else if (diff > 1 && diff <= 7) {
+                  urgencyBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 flex items-center gap-1">📅 H-${diff}</span>`;
+                }
+
                 return `
                   <div onclick="openContentModal('${item.id}')" class="p-3.5 rounded-2xl border ${item.publishDate === selDate ? 'border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-xs' : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/70'} hover:border-emerald-500 cursor-pointer transition flex items-start gap-3.5">
-                    <!-- Date Badge Box on Left of Activity Card -->
-                    <div class="w-12 h-14 rounded-2xl ${item.publishDate === selDate ? 'bg-[#14532D] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'} flex flex-col items-center justify-center shrink-0 border border-slate-200/60 dark:border-slate-700">
-                      <span class="text-[9px] font-extrabold uppercase tracking-wider opacity-75">OKT</span>
-                      <span class="text-base font-extrabold font-display leading-none mt-0.5">${escapeHtml(dayNum)}</span>
+                    <div class="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center shrink-0">
+                      <span class="text-[10px] font-extrabold uppercase text-slate-400">${item.publishDate ? item.publishDate.slice(5, 7) : '10'}</span>
+                      <span class="text-base font-extrabold font-display text-slate-900 dark:text-white leading-none">${dayNum}</span>
                     </div>
 
-                    <!-- Activity Content -->
-                    <div class="min-w-0 flex-1 space-y-1.5">
-                      <div class="flex items-center justify-between gap-2">
-                        <span class="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">${escapeHtml(item.publishTime)} WIB • ${escapeHtml(item.platform)}</span>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${stClass}">${escapeHtml(item.productionStatus)}</span>
+                    <div class="flex-1 min-w-0 space-y-1">
+                      <div class="flex flex-wrap items-center justify-between gap-1">
+                        <div class="flex items-center gap-1.5">
+                          <span class="font-mono text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400">${escapeHtml(item.contentCode)}</span>
+                          <span class="text-[11px] text-slate-400">• ${escapeHtml(item.platform)} (${escapeHtml(item.publishTime)} WIB)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                          ${urgencyBadge}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${stClass}">${escapeHtml(item.productionStatus)}</span>
+                        </div>
                       </div>
 
                       <h4 class="text-xs sm:text-sm font-extrabold font-display text-slate-900 dark:text-white leading-snug line-clamp-2">${escapeHtml(item.title)}</h4>
@@ -4685,8 +4961,11 @@
       if (!orig) return;
       const nextNum = DB.contentItems.length + 1;
       const copy = JSON.parse(JSON.stringify(orig));
+      const curYear = typeof APP_STATE.calYear === 'number' ? APP_STATE.calYear : 2026;
+      const curMonth = typeof APP_STATE.calMonth === 'number' ? APP_STATE.calMonth : 9;
+      const codePrefix = `CNT-${curYear}${String(curMonth + 1).padStart(2, '0')}`;
       copy.id = 'cnt_' + Date.now();
-      copy.contentCode = `CNT-202610-${String(nextNum).padStart(3, '0')}`;
+      copy.contentCode = `${codePrefix}-${String(nextNum).padStart(3, '0')}`;
       copy.title = orig.title + ' (Salinan)';
       copy.productionStatus = 'Draft';
       copy.approvalStatus = 'Draft Internal';
@@ -4698,13 +4977,14 @@
       showToast(`Konten berhasil diduplikasi sebagai ${copy.contentCode}`, 'success');
     }
 
-    function openContentModal(contentId, defaultDate = '2026-10-20') {
+    function openContentModal(contentId, defaultDate = null) {
       const existing = contentId ? DB.contentItems.find(c => c.id === contentId) : null;
       const nextCode = existing ? existing.contentCode : `CNT-202610-${String(DB.contentItems.length + 1).padStart(3, '0')}`;
+      const activeDefaultDate = defaultDate || APP_STATE.calSelectedDate || `${APP_STATE.calYear || 2026}-${String((APP_STATE.calMonth || 9) + 1).padStart(2, '0')}-01`;
       const c = existing || {
         contentCode: nextCode,
         title: '',
-        publishDate: defaultDate,
+        publishDate: activeDefaultDate,
         publishTime: '19:00',
         platform: 'Instagram',
         socialAccount: '@bimcorp.official',
@@ -4970,7 +5250,15 @@
         pushNotification('Persetujuan', `Konten Menunggu Review: ${payload.contentCode}`, `${payload.picName} mengirim "${payload.title}" untuk disetujui.`, 'calendar', ['MASTER']);
       }
 
-      APP_STATE.calSelectedDate = payload.publishDate;
+      if (payload.publishDate) {
+        const [pY, pM] = payload.publishDate.split('-').map(Number);
+        if (!isNaN(pY) && !isNaN(pM)) {
+          APP_STATE.calYear = pY;
+          APP_STATE.calMonth = pM - 1;
+        }
+        APP_STATE.calSelectedDate = payload.publishDate;
+        APP_STATE.calRightScope = 'DATE';
+      }
       saveDatabase();
       closeUniversalModal();
       renderCalendar();
