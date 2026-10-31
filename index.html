@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/lucide@0.395.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -618,6 +619,12 @@
 
           <button type="button" onclick="toggleDemoDataFilter()" id="btn-toggle-demo" class="hidden">
             <span id="btn-toggle-demo-label">Data Demo: Aktif</span>
+          </button>
+
+          <!-- Import Spreadsheet (MASTER & USER) -->
+          <button type="button" onclick="openSpreadsheetImportModal()" id="btn-topbar-import" class="hidden items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-emerald-600/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition" title="Import Data dari Spreadsheet (Excel / CSV / Google Sheets)">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+            <span class="hidden lg:inline">Import Spreadsheet</span>
           </button>
 
           <!-- Theme Selector (Light / Dark / System) -->
@@ -1733,6 +1740,13 @@
       if (switcherWrap) switcherWrap.classList.add('hidden');
       const loginQuickBox = document.getElementById('login-quick-rbac-box');
       if (loginQuickBox) loginQuickBox.classList.add('hidden');
+
+      const importBtn = document.getElementById('btn-topbar-import');
+      if (importBtn) {
+        const canImport = user.role !== 'GUEST';
+        importBtn.classList.toggle('hidden', !canImport);
+        importBtn.classList.toggle('inline-flex', canImport);
+      }
 
       // AI Quota box visibility (hidden for Guests)
       const quotaBox = document.getElementById('sidebar-ai-quota-box');
@@ -3750,6 +3764,11 @@
               ${['Ide', 'Brief', 'Draft', 'Produksi', 'Review', 'Revisi', 'Disetujui', 'Terjadwal', 'Dipublikasikan', 'Dibatalkan'].map(st => `<option value="${st}" ${APP_STATE.calFilterStatus === st ? 'selected' : ''}>${st}</option>`).join('')}
             </select>
 
+            <button type="button" onclick="openSpreadsheetImportModal('calendar')" class="px-3.5 py-2 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1.5">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+              <span>Import Spreadsheet</span>
+            </button>
+
             <button type="button" onclick="exportCalendarCSV()" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5">
               <i data-lucide="download" class="w-3.5 h-3.5"></i>
               <span>Unduh CSV</span>
@@ -4313,6 +4332,11 @@
               ${['Harian', 'Mingguan', 'Bulanan', 'Tahunan'].map(pr => `<option value="${pr}" ${APP_STATE.anlFilterPeriod === pr ? 'selected' : ''}>${pr}</option>`).join('')}
             </select>
 
+            <button type="button" onclick="openSpreadsheetImportModal('analytics')" class="px-3.5 py-1.5 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Import Spreadsheet</span>
+            </button>
+
             <button type="button" onclick="openAnalyticsInputModal()" class="px-3.5 py-1.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1.5">
               <i data-lucide="plus-circle" class="w-4 h-4 text-[#F4B942]"></i>
               <span>Input Data Statistik</span>
@@ -4771,6 +4795,10 @@
             <p class="text-xs text-slate-500 mt-1">Kelola rundown, kebutuhan alat, generator script pembukaan AI, dan rekap hasil aktual pasca-live.</p>
           </div>
           <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="openSpreadsheetImportModal('live')" class="px-3.5 py-2 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Import Spreadsheet</span>
+            </button>
             <button type="button" onclick="openLiveModal(null)" class="px-4 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1.5">
               <i data-lucide="radio" class="w-4 h-4 text-[#F4B942]"></i>
               <span>Jadwalkan Sesi Live Baru</span>
@@ -5159,10 +5187,16 @@
               <div class="text-xs font-bold text-slate-500 uppercase">Menunggu Keputusan Approver</div>
               <div class="text-2xl font-extrabold font-display text-amber-600 dark:text-[#F4B942] mt-1">${pendingApprovals} Pengajuan</div>
             </div>
-            <button type="button" onclick="openProcurementModal()" class="mt-3 w-full py-2 px-3 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center justify-center gap-1.5">
-              <i data-lucide="plus-circle" class="w-4 h-4 text-[#F4B942]"></i>
-              <span>Ajukan Pengadaan Barang Baru</span>
-            </button>
+            <div class="mt-3 flex flex-col sm:flex-row gap-2">
+              <button type="button" onclick="openProcurementModal()" class="flex-1 py-2 px-3 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                <i data-lucide="plus-circle" class="w-4 h-4 text-[#F4B942]"></i>
+                <span>Ajukan Pengadaan Baru</span>
+              </button>
+              <button type="button" onclick="openSpreadsheetImportModal('procurement')" class="py-2 px-3 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                <span>Import Spreadsheet</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -5574,7 +5608,7 @@
           <div class="bim-card p-5 flex flex-col justify-between">
             <div class="flex gap-2">
               <button type="button" onclick="openAdsReportModal()" class="flex-1 py-2 px-3 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold">+ Input Rekap Iklan</button>
-              <button type="button" onclick="openAdsCsvImportModal()" class="py-2 px-3 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-semibold">Impor CSV</button>
+              <button type="button" onclick="openSpreadsheetImportModal('ads')" class="py-2 px-3 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold">Import Spreadsheet</button>
             </div>
             <button type="button" onclick="exportAdsCSV()" class="mt-2 w-full py-1.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold">Ekspor Laporan CSV</button>
           </div>
@@ -8223,7 +8257,7 @@
       const pEl = document.getElementById('img-prompt');
       if (pEl) pEl.value = promptText;
       const oEl = document.getElementById('img-obj');
-      if (oEl && objText) oEl.value = objText;
+      if (oEl) oEl.value = objText || '';
       const sEl = document.getElementById('img-style');
       if (sEl && styleText) sEl.value = styleText;
     }
@@ -8242,16 +8276,11 @@
         prompt: 'Masukkan deskripsi visual di sebelah kiri lalu klik Generate untuk membuat gambar AI baru.'
       };
 
-      const activeCtxProd = (getActiveBrandProductContext() || {}).productName || '';
-      const cleanDefaultObj = (activeCtxProd && !/BIM Executive Tumbler/i.test(activeCtxProd))
-        ? activeCtxProd
-        : (hasSavedGens ? selected.mainObject : 'Simpanan Tabungan Emas & Layanan Cabang');
-
       const defaultPromptValue = APP_STATE.aiPendingImagePrompt
         || (hasSavedGens ? selected.prompt : '')
         || (APP_STATE.aiLastPromptResult && APP_STATE.aiLastPromptResult.finalImagePrompt)
         || (APP_STATE.aiLastScriptResult && APP_STATE.aiLastScriptResult.imgPrompt)
-        || 'Fotografi komersial profesional Simpanan Tabungan Emas batangan 24K & koin emas berkilau di atas meja kayu elegan dengan pencahayaan studio hangat bernuansa hijau zamrud dan emas mewah';
+        || 'Fotografi komersial profesional Simpanan Tabungan Emas batangan 24K & koin emas berkilau di atas meja kayu elegan dengan pencahayaan studio hangat';
 
       const ratios = [
         ['1:1', '1:1 — 1024 × 1024 (Feed / Square)'],
@@ -8334,18 +8363,18 @@
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label class="bim-label">Objek Utama / Judul Visual</label>
-                      <input type="text" id="img-obj" value="${escapeHtml(cleanDefaultObj)}" class="bim-input" />
+                      <input type="text" id="img-obj" value="" placeholder="Otomatis mengikuti prompt utama (opsional)" class="bim-input" />
                     </div>
                     <div>
                       <label class="bim-label">Tujuan Penggunaan</label>
-                      <input type="text" id="img-purpose" value="Visual Iklan &amp; Poster Kampanye" class="bim-input" />
+                      <input type="text" id="img-purpose" value="Visual Iklan &amp; Konten Kreatif" class="bim-input" />
                     </div>
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label class="bim-label">Palet Warna Dominan</label>
-                      <input type="text" id="img-color" value="#14532D Deep Emerald Green &amp; #F4B942 Warm Gold" class="bim-input" />
+                      <label class="bim-label">Palet Warna Dominan (Opsional)</label>
+                      <input type="text" id="img-color" value="" placeholder="Kosongkan agar mengikuti warna alami prompt" class="bim-input" />
                     </div>
                     <div>
                       <label class="bim-label">Negative Prompt</label>
@@ -8620,14 +8649,14 @@
 
     async function buildRichEnglishImagePrompt(prompt, mainObj, style, color, comp, light, cam) {
       const translatedBase = translateIdToEnVisualPrompt(prompt);
-      const translatedObj = translateIdToEnVisualPrompt(mainObj);
-      let richPrompt = `${style} of ${translatedBase}. Subject focus: ${translatedObj}. Color palette: ${color || 'deep emerald green and warm gold'}. Composition: ${comp || 'center hero focus'}. Lighting: ${light || 'warm studio rim lighting'}. Camera: ${cam || '85mm f/1.8 lens'}, ultra-detailed, photorealistic, 8k resolution, clean commercial visual, no text watermark`;
+      const colorClause = color ? ` Color palette: ${color}.` : '';
+      let richPrompt = `${style}: ${translatedBase}.${colorClause} Composition: ${comp || 'center hero focus'}. Lighting: ${light || 'natural cinematic lighting'}. Camera: ${cam || '85mm lens'}, ultra-detailed, photorealistic, 8k resolution, no text watermark`;
 
       if (isGeminiReady()) {
         try {
           const aiRes = await Promise.race([
             callGeminiJson(
-              `Translate and expand this Indonesian/English visual request into a vivid, highly detailed English text-to-image diffusion prompt (max 65 words, photography/illustration details only, no markdown):\n- Prompt: "${prompt}"\n- Main Subject: "${mainObj}"\n- Style: "${style}"\n- Colors: "${color}"\n- Lighting: "${light}"\n- Camera: "${cam}"\nReturn exact JSON: {"englishPrompt":"..."}`
+              `Translate and expand this Indonesian/English visual request into a vivid, accurate English text-to-image diffusion prompt (max 65 words, strictly faithful to the user's prompt subject, no markdown):\n- User Prompt: "${prompt}"\n- Style: "${style}"${color ? `\n- Colors: "${color}"` : ''}\n- Lighting: "${light}"\n- Camera: "${cam}"\nReturn exact JSON: {"englishPrompt":"..."}`
             ),
             new Promise(resolve => setTimeout(() => resolve(null), 5000))
           ]);
@@ -8837,8 +8866,8 @@
       // 3. If Gemini Image endpoint isn't enabled on this key, use Real AI Flux Diffusion Generator
       if (!finalImageUrl) {
         const seed = Math.floor(100000 + Math.random() * 900000);
-        const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(englishPrompt)}?width=${dim.w}&height=${dim.h}&seed=${seed}&nologo=true&model=flux`;
-        const loadedOk = await preloadAiImageUrl(fluxUrl, 20000);
+        const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(englishPrompt)}?width=${dim.w}&height=${dim.h}&seed=${seed}&nologo=true&enhance=true&model=flux`;
+        const loadedOk = await preloadAiImageUrl(fluxUrl, 22000);
         if (loadedOk) {
           finalImageUrl = fluxUrl;
           providerLabel = isGeminiReady() ? 'Gemini Prompt + Flux AI Visual' : 'Flux AI Text-to-Image Engine';
@@ -9392,7 +9421,14 @@
               `).join('')}
             </div>
 
-            ${activeTab === 'queue' ? `
+            <div class="flex flex-wrap items-center gap-2">
+              ${user.role !== 'GUEST' ? `
+                <button type="button" onclick="openSpreadsheetImportModal('design_order')" class="px-3 py-1.5 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+                  <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+                  <span>Import Order dari Spreadsheet</span>
+                </button>
+              ` : ''}
+              ${activeTab === 'queue' ? `
               <div class="inline-flex items-center bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/80 dark:border-slate-800 text-xs">
                 <button type="button" onclick="setOrdViewLayout('board')" class="px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition ${APP_STATE.ordViewLayout !== 'table' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs' : 'text-slate-500'}">
                   <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
@@ -9403,7 +9439,8 @@
                   <span>Tabel Ringkas</span>
                 </button>
               </div>
-            ` : ''}
+              ` : ''}
+            </div>
           </div>
         </div>
 
@@ -11237,10 +11274,16 @@
             <button type="button" onclick="setTaskViewMode('kanban')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold ${APP_STATE.taskViewMode === 'kanban' ? 'bg-[#14532D] text-white' : 'bg-slate-100 dark:bg-slate-800'}">Kanban View</button>
             <button type="button" onclick="setTaskViewMode('list')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold ${APP_STATE.taskViewMode === 'list' ? 'bg-[#14532D] text-white' : 'bg-slate-100 dark:bg-slate-800'}">Daftar Tugas &amp; Kalender</button>
           </div>
-          <button type="button" onclick="openNewTaskModal()" class="px-4 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1.5">
-            <i data-lucide="plus-circle" class="w-4 h-4 text-[#F4B942]"></i>
-            <span>Buat Tugas Baru</span>
-          </button>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="openSpreadsheetImportModal('tasks')" class="px-3.5 py-2 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Import Spreadsheet</span>
+            </button>
+            <button type="button" onclick="openNewTaskModal()" class="px-4 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1.5">
+              <i data-lucide="plus-circle" class="w-4 h-4 text-[#F4B942]"></i>
+              <span>Buat Tugas Baru</span>
+            </button>
+          </div>
         </div>
         ${viewHtml}
       `;
@@ -11981,7 +12024,13 @@
               <h3 class="text-sm font-bold text-slate-900 dark:text-white">Manajemen Seluruh Akun User Internal &amp; Tamu Cabang (${DB.users.length})</h3>
               <p class="text-slate-500">Buat akun baru, ubah kuota AI, nonaktifkan sementara, atau aktifkan kembali akun.</p>
             </div>
-            <button type="button" onclick="openCreateUserModal()" class="px-4 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold">+ Buat Akun User / Tamu Baru</button>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="openSpreadsheetImportModal('users')" class="px-3.5 py-2 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1.5">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                <span>Import Akun dari Spreadsheet</span>
+              </button>
+              <button type="button" onclick="openCreateUserModal()" class="px-4 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold">+ Buat Akun User / Tamu Baru</button>
+            </div>
           </div>
 
           <div class="bim-card overflow-hidden">
@@ -12852,7 +12901,858 @@
     }
 
     // =========================================================================
-    // 19. DATABASE BACKUP / RESET & INITIALIZATION
+    // 19. UNIVERSAL SPREADSHEET IMPORT ENGINE (EXCEL .XLSX / CSV / GOOGLE SHEETS)
+    // =========================================================================
+    let SPREADSHEET_IMPORT_STATE = {
+      targetModule: 'calendar',
+      sourceTab: 'file', // file | gsheets | paste
+      parsedHeaders: [],
+      parsedRows: [],
+      sourceLabel: ''
+    };
+
+    const SPREADSHEET_SCHEMAS = {
+      calendar: {
+        label: 'Kalender Konten (Jadwal Posting)',
+        permissionModule: 'calendar',
+        headers: ['Judul Konten', 'Tanggal Publish', 'Jam Publish', 'Platform', 'Akun Sosial Media', 'Cabang', 'Kampanye', 'Pilar Konten', 'Format', 'Objective', 'Hook', 'Caption', 'CTA', 'Hashtags', 'Status Produksi'],
+        sampleRows: [
+          ['Edukasi Tabungan Emas Mulai Rp 10 Ribu', '2026-10-28', '19:00', 'Instagram', '@bimcorp.official', 'Pusat Jakarta', 'Kampanye Q4', 'Edukasi Produk', 'Reels', 'conversion', 'Uang receh bisa jadi emas 24K?', 'Siapkan dana masa depan keluarga bersama Tabungan Emas Syariah.', 'Hubungi Cabang Resmi BIM', '#TabunganEmas #BIMCreativeHub', 'Terjadwal'],
+          ['Testimoni Nasabah Cabang Surabaya', '2026-10-29', '12:00', 'TikTok', '@bimcorp.id', 'Cabang Surabaya', 'Kampanye Q4', 'Social Proof', 'Video TikTok', 'awareness', 'Proses cuma 5 menit langsung aktif!', 'Pelayanan ramah dan transparan di seluruh cabang resmi kami.', 'Klik link di bio', '#LayananCabang #BIMSby', 'Produksi']
+        ]
+      },
+      analytics: {
+        label: 'Laporan Analitik Media Sosial',
+        permissionModule: 'analytics',
+        headers: ['Platform', 'Akun', 'Jenis Periode', 'Label Periode', 'Followers Awal', 'Followers Akhir', 'Reach', 'Impressions', 'Likes', 'Comments', 'Shares', 'Saves', 'Leads', 'Frekuensi Post', 'Konten Terbaik'],
+        sampleRows: [
+          ['Instagram', '@bimcorp.official', 'Bulanan', 'Oktober 2026', '14200', '15680', '84500', '128000', '4200', '640', '810', '950', '185', '24', 'Reels Edukasi Tabungan Emas'],
+          ['TikTok', '@bimcorp.id', 'Bulanan', 'Oktober 2026', '28500', '33100', '210000', '340000', '12400', '1450', '2300', '3100', '310', '28', 'Behind The Scene Layanan Cabang']
+        ]
+      },
+      ads: {
+        label: 'Laporan Iklan (Ads Manager)',
+        permissionModule: 'ads',
+        headers: ['Platform', 'Nama Kampanye', 'Nama AdSet', 'Nama Materi Kreatif', 'Cabang', 'Produk / Layanan', 'Tanggal Mulai', 'Tanggal Selesai', 'Budget Rencana', 'Spend Aktual', 'Impressions', 'Reach', 'Clicks', 'Leads / WA', 'Pembelian', 'Revenue', 'Catatan'],
+        sampleRows: [
+          ['Meta Ads', 'Promo_Tabungan_Emas_Q4', 'Audience_Keluarga_Jatim', 'Video_Reels_Emas_15s', 'Cabang Surabaya', 'Simpanan Tabungan Emas', '2026-10-01', '2026-10-31', '5000000', '4250000', '185000', '142000', '4800', '240', '68', '18500000', 'ROAS sangat baik di segmen usia 25-40'],
+          ['TikTok Ads', 'SparkAds_Awareness_Cabang', 'Broad_Jawa_Timur', 'UGC_Pelayanan_Cabang', 'Cabang Tuban', 'Layanan Cabang', '2026-10-10', '2026-10-25', '3000000', '2800000', '220000', '175000', '5600', '165', '42', '11200000', 'CTR tinggi pada 3 detik pertama']
+        ]
+      },
+      live: {
+        label: 'Jadwal Siaran Live',
+        permissionModule: 'live',
+        headers: ['Judul Live', 'Platform', 'Akun', 'Tanggal', 'Jam Mulai', 'Jam Selesai', 'Host', 'Moderator', 'Topik Utama', 'Produk / Layanan', 'Target Viewers', 'Target Leads', 'Status Persiapan'],
+        sampleRows: [
+          ['Q&A Kupas Tuntas Investasi & Tabungan Emas', 'Instagram', '@bimcorp.official', '2026-10-30', '19:00', '20:30', 'Rina Kartika', 'Andi Pratama', 'Cara Mulai Tabungan Emas', 'Simpanan Tabungan Emas', '500', '45', 'Siap Live'],
+          ['Sapa Cabang Surabaya & Promo Akhir Bulan', 'TikTok', '@bimcorp.id', '2026-10-31', '15:00', '16:30', 'Dewi Lestari', 'Budi Santoso', 'Promo Spesial Nasabah Baru', 'Layanan Cabang', '800', '60', 'Persiapan Alat']
+        ]
+      },
+      procurement: {
+        label: 'Pengadaan Barang (Procurement)',
+        permissionModule: 'procurement',
+        headers: ['Nama Barang', 'Kategori', 'Cabang / Divisi', 'Spesifikasi', 'Jumlah', 'Satuan', 'Estimasi Harga Satuan', 'Tujuan Penggunaan', 'Urgensi', 'Tanggal Dibutuhkan', 'Vendor Referensi', 'Catatan'],
+        sampleRows: [
+          ['Wireless Microphone Saramonic Blink500', 'Peralatan Produksi & Kamera', 'Pusat Jakarta', 'Dual Channel Type-C & Lightning Noise Cancelling', '2', 'Set', '2450000', 'Produksi konten Reels & Live Streaming', 'Tinggi', '2026-11-05', 'Focus Nusantara', 'Untuk tim konten lapangan'],
+          ['Cetak X-Banner & Brosur Edukasi Cabang', 'Kebutuhan Cetak & Dekorasi', 'Cabang Tuban', 'Albatros Laminasi Doff 60x160 cm + Art Paper 150gr', '10', 'Paket', '185000', 'Display ruang tunggu nasabah cabang', 'Sedang', '2026-11-10', 'Percetakan Mitra Utama', 'Sesuai desain terbaru']
+        ]
+      },
+      design_order: {
+        label: 'Antrean Desain / Order Desain (ID Card & Banner)',
+        permissionModule: 'design_order',
+        headers: ['Jenis Desain', 'Nama Pemesan / Nama di Kartu', 'Nomor WA / Telepon', 'Jabatan', 'Cabang', 'Kategori Banner', 'Lebar', 'Tinggi', 'Satuan Ukuran', 'Headline / Judul Banner', 'Isi Teks / Catatan Desain', 'Prioritas', 'Status'],
+        sampleRows: [
+          ['ID_CARD', 'Ahmad Fauzi', '081234567891', 'Customer Service Officer', 'Cabang Tuban', '-', '-', '-', '-', '-', 'Cetak kartu pegawai baru beserta tali lanyard hijau', 'Normal', 'Menunggu'],
+          ['BANNER', 'Hendra Kusuma', '081803562211', 'Kepala Cabang Tuban', 'Cabang Tuban', 'Banner promosi', '60', '160', 'cm', 'Program Tabungan Emas Berhadiah Langsung', 'Cantumkan alamat Cabang Tuban dan nomor WA resmi', 'Tinggi', 'Menunggu']
+        ]
+      },
+      tasks: {
+        label: 'Task Management (Manajemen Tugas)',
+        permissionModule: 'tasks',
+        headers: ['Judul Tugas', 'Deskripsi Tugas', 'Nama PIC / Pelaksana', 'Prioritas', 'Deadline', 'Status'],
+        sampleRows: [
+          ['Take Video Reels Testimoni Nasabah', 'Ambil 3 video vertikal 9:16 bersama nasabah di ruang pelayanan cabang', 'Rina Kartika', 'Tinggi', '2026-10-30', 'To Do'],
+          ['Desain Feed Carousel Laporan Kinerja Q3', 'Susun 7 slide infografis pertumbuhan cabang warna hijau emerald & gold', 'Budi Santoso', 'Sedang', '2026-10-31', 'In Progress']
+        ]
+      },
+      users: {
+        label: 'Data User / Karyawan (Master)',
+        permissionModule: 'master_settings',
+        headers: ['Nama Lengkap', 'Email', 'Password', 'Role', 'Jabatan', 'NIP', 'Nomor Telepon', 'Cabang', 'Kuota Kredit AI'],
+        sampleRows: [
+          ['Siti Aminah', 'siti.aminah@bimcreative.id', 'BimUser#2026', 'USER', 'Content Creator', 'BIM-205', '081298765432', 'Cabang Surabaya', '300'],
+          ['Bagus Setiawan (Tamu Bandung)', 'tamu.bandung@bimcreative.id', 'BimGuest#2026', 'GUEST', 'Koordinator Cabang Bandung', 'CBG-BDG-02', '081322334455', 'Cabang Bandung', '0']
+        ]
+      }
+    };
+
+    function openSpreadsheetImportModal(defaultModule) {
+      const user = getCurrentUser();
+      if (user.role === 'GUEST') {
+        showToast('Fitur Import Spreadsheet hanya tersedia untuk akun Internal (USER) dan Master.', 'error');
+        return;
+      }
+      const allowedModules = Object.keys(SPREADSHEET_SCHEMAS).filter(k => {
+        if (k === 'users') return user.role === 'MASTER';
+        return true;
+      });
+      const activeMod = APP_STATE.activeModule;
+      const initialMod = (defaultModule && allowedModules.includes(defaultModule))
+        ? defaultModule
+        : (allowedModules.includes(activeMod) ? activeMod : 'calendar');
+
+      SPREADSHEET_IMPORT_STATE = {
+        targetModule: initialMod,
+        sourceTab: 'file',
+        parsedHeaders: [],
+        parsedRows: [],
+        sourceLabel: ''
+      };
+      renderSpreadsheetImportModalContent();
+    }
+
+    function renderSpreadsheetImportModalContent() {
+      const user = getCurrentUser();
+      const st = SPREADSHEET_IMPORT_STATE;
+      const schema = SPREADSHEET_SCHEMAS[st.targetModule] || SPREADSHEET_SCHEMAS.calendar;
+      const allowedModules = Object.keys(SPREADSHEET_SCHEMAS).filter(k => k !== 'users' || user.role === 'MASTER');
+
+      const bodyHtml = `
+        <div class="space-y-4 text-xs">
+          <!-- Step 1: Pilih Modul Tujuan & Unduh Template -->
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              <div class="md:col-span-6">
+                <label class="bim-label">1. Pilih Modul Tujuan Import Data <span class="text-red-500">*</span></label>
+                <select id="ss-target-module" onchange="changeSpreadsheetTargetModule(this.value)" class="bim-input font-bold">
+                  ${allowedModules.map(k => `<option value="${k}" ${st.targetModule === k ? 'selected' : ''}>${escapeHtml(SPREADSHEET_SCHEMAS[k].label)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="md:col-span-6 flex flex-wrap gap-2">
+                <button type="button" onclick="downloadSpreadsheetTemplate('${st.targetModule}', 'xlsx')" class="flex-1 py-2.5 px-3 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold flex items-center justify-center gap-1.5 shadow-2xs transition">
+                  <i data-lucide="download" class="w-3.5 h-3.5 text-[#F4B942]"></i>
+                  <span>Unduh Template Excel (.xlsx)</span>
+                </button>
+                <button type="button" onclick="downloadSpreadsheetTemplate('${st.targetModule}', 'csv')" class="py-2.5 px-3 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold flex items-center justify-center gap-1.5 transition">
+                  <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                  <span>Template .CSV</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="text-[11px] text-slate-500 dark:text-slate-400">
+              <strong class="text-slate-700 dark:text-slate-200">Kolom yang didukung untuk ${escapeHtml(schema.label)}:</strong>
+              <div class="flex flex-wrap gap-1 mt-1.5">
+                ${schema.headers.map(h => `<span class="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono font-semibold text-emerald-800 dark:text-emerald-300">${escapeHtml(h)}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Pilih Sumber Spreadsheet -->
+          <div class="space-y-3">
+            <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2">
+              <button type="button" onclick="switchSpreadsheetSourceTab('file')" class="px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition ${st.sourceTab === 'file' ? 'bg-[#14532D] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}">
+                <i data-lucide="upload" class="w-3.5 h-3.5 ${st.sourceTab === 'file' ? 'text-[#F4B942]' : ''}"></i>
+                <span>Upload File Excel (.xlsx) / CSV</span>
+              </button>
+              <button type="button" onclick="switchSpreadsheetSourceTab('gsheets')" class="px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition ${st.sourceTab === 'gsheets' ? 'bg-[#14532D] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}">
+                <i data-lucide="link" class="w-3.5 h-3.5 ${st.sourceTab === 'gsheets' ? 'text-[#F4B942]' : ''}"></i>
+                <span>Link Google Sheets</span>
+              </button>
+              <button type="button" onclick="switchSpreadsheetSourceTab('paste')" class="px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition ${st.sourceTab === 'paste' ? 'bg-[#14532D] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}">
+                <i data-lucide="clipboard-paste" class="w-3.5 h-3.5 ${st.sourceTab === 'paste' ? 'text-[#F4B942]' : ''}"></i>
+                <span>Copy-Paste Tabel Excel/Sheets</span>
+              </button>
+            </div>
+
+            ${st.sourceTab === 'file' ? `
+              <div class="p-5 rounded-2xl border-2 border-dashed border-emerald-500/40 bg-emerald-50/30 dark:bg-emerald-950/15 text-center space-y-2">
+                <i data-lucide="file-spreadsheet" class="w-8 h-8 text-[#16A34A] mx-auto"></i>
+                <div class="font-bold text-slate-800 dark:text-slate-100">Pilih File Spreadsheet dari Komputer Anda (.xlsx, .xls, atau .csv)</div>
+                <p class="text-[11px] text-slate-500">Baris pertama otomatis dibaca sebagai nama kolom (header), dan baris berikutnya sebagai data.</p>
+                <div class="pt-1">
+                  <input type="file" id="ss-file-input" accept=".xlsx,.xls,.csv,.tsv,.txt" onchange="handleSpreadsheetFileUpload(this)" class="max-w-xs mx-auto block text-xs file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#14532D] file:text-white hover:file:bg-[#16A34A] cursor-pointer" />
+                </div>
+              </div>
+            ` : st.sourceTab === 'gsheets' ? `
+              <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+                <div>
+                  <label class="bim-label">Tempel URL / Link Google Sheets</label>
+                  <p class="text-[11px] text-slate-500 mb-2">Pastikan akses berbagi Google Sheets diatur ke <strong>"Siapa saja yang memiliki link dapat melihat" (Anyone with the link can view)</strong>.</p>
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <input type="url" id="ss-gsheet-url" placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA.../edit#gid=0" class="bim-input flex-1 font-mono text-[11px]" />
+                    <button type="button" id="ss-gsheet-btn" onclick="fetchGoogleSheetsUrlData()" class="px-4 py-2.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold shrink-0 flex items-center justify-center gap-1.5">
+                      <i data-lucide="cloud-download" class="w-4 h-4 text-[#F4B942]"></i>
+                      <span>Tarik Data dari Google Sheets</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ` : `
+              <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
+                <label class="bim-label">Blok &amp; Copy Sel dari Excel / Google Sheets (Termasuk Baris Judul Kolom), Lalu Paste di Bawah Ini:</label>
+                <textarea id="ss-paste-area" rows="5" placeholder="Tempel (Ctrl+V) tabel dari Excel atau Google Sheets di sini..." class="bim-input font-mono text-[11px]"></textarea>
+                <div class="flex justify-end">
+                  <button type="button" onclick="parsePastedSpreadsheetText()" class="px-4 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold flex items-center gap-1.5">
+                    <i data-lucide="table" class="w-4 h-4 text-[#F4B942]"></i>
+                    <span>Baca &amp; Tampilkan Pratinjau</span>
+                  </button>
+                </div>
+              </div>
+            `}
+          </div>
+
+          <!-- Step 3: Pratinjau Data Sebelum Disimpan -->
+          <div id="ss-preview-container">
+            ${buildSpreadsheetPreviewTableHtml()}
+          </div>
+        </div>
+      `;
+
+      const footerHtml = `
+        <div class="w-full flex flex-wrap items-center justify-between gap-2">
+          <div class="text-xs text-slate-500">
+            ${st.parsedRows.length > 0
+              ? `<span class="text-emerald-700 dark:text-emerald-400 font-bold">✓ ${st.parsedRows.length} baris data siap diimpor ke ${escapeHtml(schema.label)}</span>`
+              : `<span>Belum ada data yang dimuat. Silakan pilih file, link Google Sheets, atau paste tabel.</span>`
+            }
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="closeUniversalModal()" class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-semibold">Batal</button>
+            <button type="button" onclick="commitSpreadsheetImportNow()" ${st.parsedRows.length === 0 ? 'disabled' : ''} class="px-5 py-2.5 rounded-xl ${st.parsedRows.length > 0 ? 'bg-[#14532D] hover:bg-[#16A34A] text-white cursor-pointer' : 'bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed'} text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+              <i data-lucide="check-circle-2" class="w-4 h-4 text-[#F4B942]"></i>
+              <span>Simpan &amp; Masukkan ${st.parsedRows.length > 0 ? st.parsedRows.length + ' Baris ' : ''}ke Aplikasi</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      openUniversalModal('Import Data dari Spreadsheet (Excel / CSV / Google Sheets)', bodyHtml, footerHtml);
+    }
+
+    function changeSpreadsheetTargetModule(modKey) {
+      SPREADSHEET_IMPORT_STATE.targetModule = modKey;
+      renderSpreadsheetImportModalContent();
+    }
+
+    function switchSpreadsheetSourceTab(tabKey) {
+      SPREADSHEET_IMPORT_STATE.sourceTab = tabKey;
+      renderSpreadsheetImportModalContent();
+    }
+
+    function buildSpreadsheetPreviewTableHtml() {
+      const st = SPREADSHEET_IMPORT_STATE;
+      if (!st.parsedRows || st.parsedRows.length === 0) {
+        return `
+          <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 text-center text-slate-400 text-xs">
+            Pratinjau isi tabel akan muncul di sini setelah Anda memilih file spreadsheet atau menarik link Google Sheets.
+          </div>
+        `;
+      }
+      const previewSlice = st.parsedRows.slice(0, 8);
+      return `
+        <div class="rounded-2xl border border-emerald-500/40 overflow-hidden bg-white dark:bg-slate-900">
+          <div class="px-4 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 flex flex-wrap items-center justify-between gap-2">
+            <div class="font-bold text-emerald-900 dark:text-emerald-300">
+              Pratinjau Data (${st.parsedRows.length} Baris Terbaca dari ${escapeHtml(st.sourceLabel || 'Spreadsheet')})
+            </div>
+            <span class="text-[11px] text-slate-500">Menampilkan ${previewSlice.length} dari ${st.parsedRows.length} baris</span>
+          </div>
+          <div class="overflow-x-auto max-h-56">
+            <table class="w-full text-left border-collapse text-[11px]">
+              <thead>
+                <tr class="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                  <th class="py-2 px-2.5 font-bold">#</th>
+                  ${st.parsedHeaders.map(h => `<th class="py-2 px-2.5 font-bold whitespace-nowrap">${escapeHtml(h)}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200/60 dark:divide-slate-800">
+                ${previewSlice.map((rowObj, idx) => `
+                  <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                    <td class="py-1.5 px-2.5 font-mono text-slate-400">${idx + 1}</td>
+                    ${st.parsedHeaders.map(h => `<td class="py-1.5 px-2.5 max-w-[180px] truncate">${escapeHtml(String(rowObj[h] !== undefined && rowObj[h] !== null ? rowObj[h] : ''))}</td>`).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function downloadSpreadsheetTemplate(modKey, format) {
+      const schema = SPREADSHEET_SCHEMAS[modKey] || SPREADSHEET_SCHEMAS.calendar;
+      const aoa = [schema.headers, ...schema.sampleRows];
+      const baseName = `Template_BIM_${modKey.toUpperCase()}_2026`;
+
+      if (format === 'xlsx' && window.XLSX) {
+        try {
+          const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+          ws['!cols'] = schema.headers.map(h => ({ wch: Math.max(18, h.length + 4) }));
+          const wb = window.XLSX.utils.book_new();
+          window.XLSX.utils.book_append_sheet(wb, ws, 'Template_Data');
+          window.XLSX.writeFile(wb, `${baseName}.xlsx`);
+          showToast(`Template Excel (${baseName}.xlsx) berhasil diunduh!`, 'success');
+          return;
+        } catch (err) {
+          console.warn('XLSX fallback to CSV:', err);
+        }
+      }
+
+      // CSV with UTF-8 BOM so Excel opens columns directly
+      const csvLines = aoa.map(row =>
+        row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')
+      );
+      const csvContent = '\uFEFF' + csvLines.join('\r\n');
+      triggerDownload(csvContent, `${baseName}.csv`, 'text/csv;charset=utf-8;');
+      showToast(`Template CSV (${baseName}.csv) berhasil diunduh!`, 'success');
+    }
+
+    function parseDelimitedTextToMatrix(rawText) {
+      const text = String(rawText || '').replace(/^\uFEFF/, '').trim();
+      if (!text) return [];
+      const firstLine = text.split(/\r?\n/)[0] || '';
+      const tabCount = (firstLine.match(/\t/g) || []).length;
+      const semiCount = (firstLine.match(/;/g) || []).length;
+      const commaCount = (firstLine.match(/,/g) || []).length;
+      const delimiter = tabCount > 0 && tabCount >= commaCount ? '\t' : (semiCount > commaCount ? ';' : ',');
+
+      const rows = [];
+      let curRow = [];
+      let curVal = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const nextCh = text[i + 1];
+        if (inQuotes) {
+          if (ch === '"' && nextCh === '"') {
+            curVal += '"';
+            i++;
+          } else if (ch === '"') {
+            inQuotes = false;
+          } else {
+            curVal += ch;
+          }
+        } else {
+          if (ch === '"') {
+            inQuotes = true;
+          } else if (ch === delimiter) {
+            curRow.push(curVal.trim());
+            curVal = '';
+          } else if (ch === '\r' && nextCh === '\n') {
+            curRow.push(curVal.trim());
+            rows.push(curRow);
+            curRow = [];
+            curVal = '';
+            i++;
+          } else if (ch === '\n' || ch === '\r') {
+            curRow.push(curVal.trim());
+            rows.push(curRow);
+            curRow = [];
+            curVal = '';
+          } else {
+            curVal += ch;
+          }
+        }
+      }
+      if (curVal.length > 0 || curRow.length > 0) {
+        curRow.push(curVal.trim());
+        rows.push(curRow);
+      }
+      return rows.filter(r => r.some(cell => String(cell || '').trim() !== ''));
+    }
+
+    function loadMatrixIntoImportState(matrix, sourceLabel) {
+      if (!Array.isArray(matrix) || matrix.length < 2) {
+        showToast('Spreadsheet minimal harus memiliki 1 baris judul kolom (header) dan 1 baris isi data.', 'error');
+        return;
+      }
+      const rawHeaders = matrix[0].map((h, i) => String(h || '').trim() || `Kolom_${i + 1}`);
+      const dataRows = [];
+      for (let r = 1; r < matrix.length; r++) {
+        const arr = matrix[r];
+        if (!Array.isArray(arr) || !arr.some(c => String(c ?? '').trim() !== '')) continue;
+        const obj = { __rawArray: arr };
+        rawHeaders.forEach((h, idx) => {
+          obj[h] = arr[idx] !== undefined && arr[idx] !== null ? String(arr[idx]).trim() : '';
+        });
+        dataRows.push(obj);
+      }
+      if (dataRows.length === 0) {
+        showToast('Tidak ditemukan baris data yang terisi di dalam spreadsheet.', 'error');
+        return;
+      }
+      SPREADSHEET_IMPORT_STATE.parsedHeaders = rawHeaders;
+      SPREADSHEET_IMPORT_STATE.parsedRows = dataRows;
+      SPREADSHEET_IMPORT_STATE.sourceLabel = sourceLabel || 'Spreadsheet';
+      renderSpreadsheetImportModalContent();
+      showToast(`Berhasil membaca ${dataRows.length} baris data dari ${sourceLabel}!`, 'success');
+    }
+
+    function handleSpreadsheetFileUpload(inputEl) {
+      const file = inputEl && inputEl.files && inputEl.files[0];
+      if (!file) return;
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+
+      if ((ext === 'xlsx' || ext === 'xls') && window.XLSX) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = window.XLSX.read(data, { type: 'array', raw: false, dateNF: 'yyyy-mm-dd' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false });
+            loadMatrixIntoImportState(matrix, file.name);
+          } catch (err) {
+            showToast('Gagal membaca file Excel: ' + err.message, 'error');
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          const text = String(evt.target.result || '');
+          const matrix = parseDelimitedTextToMatrix(text);
+          loadMatrixIntoImportState(matrix, file.name);
+        };
+        reader.readAsText(file);
+      }
+    }
+
+    async function fetchGoogleSheetsUrlData() {
+      const inp = document.getElementById('ss-gsheet-url');
+      const btn = document.getElementById('ss-gsheet-btn');
+      const rawUrl = (inp ? inp.value : '').trim();
+      if (!rawUrl) {
+        showToast('Masukkan link Google Sheets terlebih dahulu.', 'error');
+        return;
+      }
+      const matchId = rawUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (!matchId) {
+        showToast('URL Google Sheets tidak valid. Pastikan URL mengandung /spreadsheets/d/...', 'error');
+        return;
+      }
+      const sheetId = matchId[1];
+      const matchGid = rawUrl.match(/[#&?]gid=([0-9]+)/);
+      const gid = matchGid ? matchGid[1] : '0';
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-[#F4B942]"></i><span>Menarik Data...</span>`;
+        refreshIcons();
+      }
+
+      const urlsToTry = [
+        `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`,
+        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
+      ];
+
+      let csvText = '';
+      for (const u of urlsToTry) {
+        try {
+          const res = await fetch(u);
+          if (res.ok) {
+            const txt = await res.text();
+            if (txt && !txt.trim().startsWith('<!DOCTYPE html')) {
+              csvText = txt;
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!csvText) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<i data-lucide="cloud-download" class="w-4 h-4 text-[#F4B942]"></i><span>Tarik Data dari Google Sheets</span>`;
+          refreshIcons();
+        }
+        showToast('Gagal mengakses Google Sheets. Pastikan akses Share diatur ke "Siapa saja yang memiliki link" (Anyone with the link).', 'error');
+        return;
+      }
+
+      const matrix = parseDelimitedTextToMatrix(csvText);
+      loadMatrixIntoImportState(matrix, `Google Sheets (${sheetId.slice(0, 8)}...)`);
+    }
+
+    function parsePastedSpreadsheetText() {
+      const area = document.getElementById('ss-paste-area');
+      const raw = area ? area.value : '';
+      const matrix = parseDelimitedTextToMatrix(raw);
+      loadMatrixIntoImportState(matrix, 'Tabel Copy-Paste');
+    }
+
+    function pickRowField(rowObj, aliases, fallbackIndex) {
+      const keys = Object.keys(rowObj).filter(k => k !== '__rawArray');
+      for (const alias of aliases) {
+        const cleanAlias = alias.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const foundKey = keys.find(k => {
+          const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+          return cleanK === cleanAlias || cleanK.includes(cleanAlias) || cleanAlias.includes(cleanK);
+        });
+        if (foundKey && String(rowObj[foundKey] ?? '').trim() !== '') {
+          return String(rowObj[foundKey]).trim();
+        }
+      }
+      if (typeof fallbackIndex === 'number' && rowObj.__rawArray && rowObj.__rawArray[fallbackIndex] !== undefined) {
+        return String(rowObj.__rawArray[fallbackIndex] ?? '').trim();
+      }
+      return '';
+    }
+
+    function parseCleanNumber(val, defaultVal = 0) {
+      if (val === undefined || val === null || val === '') return defaultVal;
+      const s = String(val).replace(/rp|idr|\s/gi, '').trim();
+      // Handle Indonesian format 5.000.000 or 5,000,000
+      const cleaned = s.replace(/\.(?=\d{3}(\D|$))/g, '').replace(/,(?=\d{3}(\D|$))/g, '').replace(/[^0-9.-]/g, '');
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : defaultVal;
+    }
+
+    function normalizeSpreadsheetDate(val, fallbackDate = '2026-10-28') {
+      const s = String(val || '').trim();
+      if (!s) return fallbackDate;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      // DD/MM/YYYY or DD-MM-YYYY
+      const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (dmy) {
+        return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+      }
+      const parsed = new Date(s);
+      if (!isNaN(parsed.getTime())) {
+        const y = parsed.getFullYear();
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      return fallbackDate;
+    }
+
+    function commitSpreadsheetImportNow() {
+      const st = SPREADSHEET_IMPORT_STATE;
+      const rows = st.parsedRows || [];
+      if (rows.length === 0) return;
+
+      const mod = st.targetModule;
+      const schema = SPREADSHEET_SCHEMAS[mod];
+      if (!schema) return;
+      if (!requirePermission(schema.permissionModule, 'create', `Import Spreadsheet ${schema.label}`)) return;
+
+      const user = getCurrentUser();
+      let importedCount = 0;
+
+      rows.forEach((r, idx) => {
+        const uniqSuffix = Date.now() + '_' + idx;
+        if (mod === 'calendar') {
+          const nextCode = `CNT-202610-${String(DB.contentItems.length + 1).padStart(3, '0')}`;
+          const title = pickRowField(r, ['Judul Konten', 'Judul', 'Title', 'Topik'], 0) || `Konten Import #${idx + 1}`;
+          const pubDate = normalizeSpreadsheetDate(pickRowField(r, ['Tanggal Publish', 'Tanggal', 'Date'], 1), '2026-10-28');
+          const pubTime = pickRowField(r, ['Jam Publish', 'Jam', 'Waktu', 'Time'], 2) || '19:00';
+          const platform = pickRowField(r, ['Platform', 'Sosmed'], 3) || 'Instagram';
+          const account = pickRowField(r, ['Akun Sosial Media', 'Akun', 'Account'], 4) || '@bimcorp.official';
+          const branch = normalizeBranchName(pickRowField(r, ['Cabang', 'Branch'], 5) || user.branch || 'Pusat Jakarta');
+          DB.contentItems.unshift({
+            id: 'cnt_imp_' + uniqSuffix,
+            contentCode: nextCode,
+            title,
+            publishDate: pubDate,
+            publishTime: pubTime,
+            platform,
+            socialAccount: account,
+            branch,
+            campaign: pickRowField(r, ['Kampanye', 'Campaign'], 6) || 'Kampanye Q4',
+            pillar: pickRowField(r, ['Pilar Konten', 'Pilar', 'Pillar'], 7) || 'Edukasi & Promosi',
+            nicheAudience: 'Audiens Umum & Cabang',
+            format: pickRowField(r, ['Format', 'Jenis Konten'], 8) || 'Reels',
+            objective: pickRowField(r, ['Objective', 'Tujuan'], 9) || 'awareness',
+            hook: pickRowField(r, ['Hook'], 10) || title,
+            caption: pickRowField(r, ['Caption', 'Deskripsi'], 11) || title,
+            scriptVo: '',
+            cta: pickRowField(r, ['CTA', 'Call to Action'], 12) || DB.appSettings.brandGuideline.mandatoryCta,
+            hashtags: pickRowField(r, ['Hashtags', 'Hashtag'], 13) || '#BIMCreativeHub',
+            visualRef: 'Import Spreadsheet',
+            mediaAssetId: '',
+            aiPromptUsed: '',
+            picUserId: user.id,
+            picName: user.fullName,
+            productionStatus: pickRowField(r, ['Status Produksi', 'Status'], 14) || 'Terjadwal',
+            approvalStatus: 'Disetujui',
+            publishUrl: '',
+            evaluationNotes: `Diimpor dari ${st.sourceLabel}`,
+            isDemo: false
+          });
+          importedCount++;
+        } else if (mod === 'analytics') {
+          const likes = parseCleanNumber(pickRowField(r, ['Likes', 'Like'], 8));
+          const comments = parseCleanNumber(pickRowField(r, ['Comments', 'Komentar'], 9));
+          const shares = parseCleanNumber(pickRowField(r, ['Shares', 'Share'], 10));
+          const saves = parseCleanNumber(pickRowField(r, ['Saves', 'Save'], 11));
+          const eng = likes + comments + shares + saves;
+          DB.analyticsSnapshots.unshift({
+            id: 'anl_imp_' + uniqSuffix,
+            platform: pickRowField(r, ['Platform'], 0) || 'Instagram',
+            account: pickRowField(r, ['Akun', 'Account'], 1) || '@bimcorp.official',
+            periodType: pickRowField(r, ['Jenis Periode', 'Periode'], 2) || 'Bulanan',
+            periodLabel: pickRowField(r, ['Label Periode', 'Bulan', 'Tanggal'], 3) || 'Oktober 2026',
+            followersStart: parseCleanNumber(pickRowField(r, ['Followers Awal', 'Followers Start'], 4)),
+            followersEnd: parseCleanNumber(pickRowField(r, ['Followers Akhir', 'Followers End', 'Followers'], 5)),
+            reach: parseCleanNumber(pickRowField(r, ['Reach', 'Jangkauan'], 6)),
+            impressions: parseCleanNumber(pickRowField(r, ['Impressions', 'Impresi'], 7)),
+            engagement: eng,
+            likes,
+            comments,
+            shares,
+            saves,
+            profileVisits: Math.round(eng * 0.45),
+            linkClicks: Math.round(eng * 0.12),
+            leadsConversions: parseCleanNumber(pickRowField(r, ['Leads', 'Konversi'], 12)),
+            bestContentTitle: pickRowField(r, ['Konten Terbaik', 'Best Content'], 14) || 'Konten Unggulan',
+            lowestContentTitle: '-',
+            postFrequency: parseCleanNumber(pickRowField(r, ['Frekuensi Post', 'Jumlah Post'], 13), 10),
+            dataSource: `Import Spreadsheet (${st.sourceLabel})`,
+            updatedAt: getNowWIB(),
+            isDemo: false
+          });
+          importedCount++;
+        } else if (mod === 'ads') {
+          const nextCode = `ADS-202610-${String(DB.adReports.length + 1).padStart(3, '0')}`;
+          DB.adReports.unshift({
+            id: 'ads_imp_' + uniqSuffix,
+            adReportId: nextCode,
+            platform: pickRowField(r, ['Platform'], 0) || 'Meta Ads',
+            campaignName: pickRowField(r, ['Nama Kampanye', 'CampaignName', 'Campaign'], 1) || `Kampanye #${idx + 1}`,
+            adSetName: pickRowField(r, ['Nama AdSet', 'AdSetName', 'AdSet'], 2) || 'AdSet Utama',
+            creativeName: pickRowField(r, ['Nama Materi Kreatif', 'CreativeName', 'Creative'], 3) || 'Materi Video/Visual',
+            objective: 'Conversions / Leads',
+            startDate: normalizeSpreadsheetDate(pickRowField(r, ['Tanggal Mulai', 'StartDate'], 6), '2026-10-01'),
+            endDate: normalizeSpreadsheetDate(pickRowField(r, ['Tanggal Selesai', 'EndDate'], 7), '2026-10-31'),
+            branch: normalizeBranchName(pickRowField(r, ['Cabang', 'Branch'], 4) || user.branch || 'Pusat Jakarta'),
+            productService: pickRowField(r, ['Produk / Layanan', 'Produk', 'Product'], 5) || 'Layanan Utama',
+            plannedBudget: parseCleanNumber(pickRowField(r, ['Budget Rencana', 'PlannedBudget', 'Budget'], 8)),
+            actualSpend: parseCleanNumber(pickRowField(r, ['Spend Aktual', 'ActualSpend', 'Spend', 'Biaya'], 9)),
+            impressions: parseCleanNumber(pickRowField(r, ['Impressions', 'Impresi'], 10)),
+            reach: parseCleanNumber(pickRowField(r, ['Reach', 'Jangkauan'], 11)),
+            clicks: parseCleanNumber(pickRowField(r, ['Clicks', 'Klik'], 12)),
+            linkClicks: Math.round(parseCleanNumber(pickRowField(r, ['Clicks', 'Klik'], 12)) * 0.75),
+            conversationsLeads: parseCleanNumber(pickRowField(r, ['Leads / WA', 'Leads', 'WA'], 13)),
+            purchasesConversions: parseCleanNumber(pickRowField(r, ['Pembelian', 'Purchases', 'Konversi'], 14)),
+            revenue: parseCleanNumber(pickRowField(r, ['Revenue', 'Omzet', 'Pendapatan'], 15)),
+            notesRecommendations: pickRowField(r, ['Catatan', 'Notes'], 16) || `Diimpor dari ${st.sourceLabel}`,
+            screenshotName: 'Spreadsheet_Import.xlsx',
+            isDemo: false
+          });
+          importedCount++;
+        } else if (mod === 'live') {
+          const nextCode = `LIVE-202610-${String(DB.liveSchedules.length + 1).padStart(3, '0')}`;
+          const platform = pickRowField(r, ['Platform'], 1) || 'Instagram';
+          DB.liveSchedules.unshift({
+            id: 'liv_imp_' + uniqSuffix,
+            liveCode: nextCode,
+            title: pickRowField(r, ['Judul Live', 'Judul', 'Title'], 0) || `Sesi Live #${idx + 1}`,
+            platform,
+            account: pickRowField(r, ['Akun', 'Account'], 2) || '@bimcorp.official',
+            date: normalizeSpreadsheetDate(pickRowField(r, ['Tanggal', 'Date'], 3), '2026-10-30'),
+            startTime: pickRowField(r, ['Jam Mulai', 'Start'], 4) || '19:00',
+            endTime: pickRowField(r, ['Jam Selesai', 'End'], 5) || '20:30',
+            host: pickRowField(r, ['Host', 'Presenter'], 6) || user.fullName,
+            moderator: pickRowField(r, ['Moderator', 'Co-Host'], 7) || 'Tim Kreatif',
+            mainTopic: pickRowField(r, ['Topik Utama', 'Topik'], 8) || 'Edukasi & Tanya Jawab',
+            productService: pickRowField(r, ['Produk / Layanan', 'Produk'], 9) || 'Layanan Cabang',
+            targetAudience: 'Audiens Live ' + platform,
+            objective: 'Edukasi & Leads Live',
+            targetDurationMin: 90,
+            outline: 'Pembukaan, Materi Utama, Tanya Jawab & Promo Penutup',
+            openingScript: 'Halo sahabat BIM, selamat bergabung di sesi live kita hari ini!',
+            talkingPoints: 'Sesuai topik utama',
+            cta: DB.appSettings.brandGuideline.mandatoryCta,
+            equipmentProps: 'Kamera / Smartphone, Mic Wireless, Ringlight',
+            prepStatus: pickRowField(r, ['Status Persiapan', 'Status'], 12) || 'Terjadwal',
+            liveUrl: '',
+            postLiveNotes: '',
+            targetPeakViewers: parseCleanNumber(pickRowField(r, ['Target Viewers', 'Viewers'], 10), 300),
+            actualPeakViewers: 0,
+            targetLeads: parseCleanNumber(pickRowField(r, ['Target Leads', 'Leads'], 11), 30),
+            actualLeads: 0,
+            actualDurationMin: 0,
+            isDemo: false
+          });
+          importedCount++;
+        } else if (mod === 'procurement') {
+          const nextCode = `PRC-202610-${String(DB.procurementRequests.length + 1).padStart(3, '0')}`;
+          const qty = Math.max(1, parseCleanNumber(pickRowField(r, ['Jumlah', 'Qty', 'Quantity'], 4), 1));
+          const price = parseCleanNumber(pickRowField(r, ['Estimasi Harga Satuan', 'Harga Satuan', 'Harga', 'Price'], 6), 0);
+          DB.procurementRequests.unshift({
+            id: 'prc_imp_' + uniqSuffix,
+            procId: nextCode,
+            requesterId: user.id,
+            requesterName: user.fullName,
+            branchDivision: normalizeBranchName(pickRowField(r, ['Cabang / Divisi', 'Cabang', 'Divisi'], 2) || user.branch || 'Pusat Jakarta'),
+            itemName: pickRowField(r, ['Nama Barang', 'Barang', 'Item'], 0) || `Pengadaan #${idx + 1}`,
+            category: pickRowField(r, ['Kategori', 'Category'], 1) || 'Peralatan Produksi & Kamera',
+            specification: pickRowField(r, ['Spesifikasi', 'Spek'], 3) || '-',
+            quantity: qty,
+            unit: pickRowField(r, ['Satuan', 'Unit'], 5) || 'Unit',
+            estimatedUnitPrice: price,
+            totalEstimatedCost: qty * price,
+            actualCost: null,
+            purpose: pickRowField(r, ['Tujuan Penggunaan', 'Tujuan', 'Keperluan'], 7) || 'Operasional Kreatif',
+            urgency: pickRowField(r, ['Urgensi', 'Prioritas'], 8) || 'Sedang',
+            neededDate: normalizeSpreadsheetDate(pickRowField(r, ['Tanggal Dibutuhkan', 'Tanggal'], 9), '2026-11-05'),
+            vendorRef: pickRowField(r, ['Vendor Referensi', 'Vendor', 'Toko'], 10) || '-',
+            attachmentName: 'Spreadsheet_Import.xlsx',
+            receiptAttachment: '',
+            notes: pickRowField(r, ['Catatan', 'Notes'], 11) || `Diimpor dari ${st.sourceLabel}`,
+            status: 'Menunggu Persetujuan',
+            rejectionReason: '',
+            statusHistory: [
+              { status: 'Diajukan', by: user.fullName, time: getNowWIB() },
+              { status: 'Menunggu Persetujuan', by: 'Import Spreadsheet', time: getNowWIB() }
+            ],
+            isDemo: false
+          });
+          importedCount++;
+        } else if (mod === 'design_order') {
+          const rawType = (pickRowField(r, ['Jenis Desain', 'Jenis', 'Tipe'], 0) || 'ID_CARD').toUpperCase();
+          const isBanner = rawType.includes('BANNER') || rawType.includes('SPANDUK') || rawType.includes('BNR');
+          const orderType = isBanner ? 'BANNER' : 'ID_CARD';
+          const autoOrderId = generateUniqueOrderId(isBanner ? 'BNR' : 'IDC');
+          const personName = pickRowField(r, ['Nama Pemesan / Nama di Kartu', 'Nama Lengkap', 'Nama', 'Pemesan'], 1) || user.fullName;
+          const phone = pickRowField(r, ['Nomor WA / Telepon', 'Nomor Telepon', 'No HP', 'WA', 'Telepon'], 2) || user.phone || '081200000000';
+          const jobTitle = pickRowField(r, ['Jabatan', 'Posisi'], 3) || 'Staf Cabang';
+          const branch = normalizeBranchName(pickRowField(r, ['Cabang', 'Branch'], 4) || user.branch || 'Pusat Jakarta');
+          const cat = pickRowField(r, ['Kategori Banner', 'Kategori'], 5) || 'Banner promosi';
+          const w = parseCleanNumber(pickRowField(r, ['Lebar', 'Width'], 6), 60) || 60;
+          const h = parseCleanNumber(pickRowField(r, ['Tinggi', 'Height'], 7), 160) || 160;
+          const unit = pickRowField(r, ['Satuan Ukuran', 'Satuan'], 8) || 'cm';
+          const headline = pickRowField(r, ['Headline / Judul Banner', 'Headline', 'Judul Banner'], 9) || `Banner ${branch}`;
+          const notes = pickRowField(r, ['Isi Teks / Catatan Desain', 'Catatan', 'Deskripsi'], 10) || '-';
+          const priority = pickRowField(r, ['Prioritas'], 11) || 'Normal';
+          const status = pickRowField(r, ['Status'], 12) || 'Menunggu';
+          const nowStr = getNowWIB();
+
+          DB.designOrders.unshift({
+            id: 'ord_imp_' + uniqSuffix,
+            orderId: autoOrderId,
+            orderType,
+            requesterId: user.id,
+            requesterName: personName,
+            phone,
+            jobTitle,
+            branch,
+            assignedDesignerId: 'usr_designer',
+            assignedDesignerName: 'Budi Santoso',
+            priority,
+            status,
+            createdAt: nowStr,
+            completedAt: null,
+            completedById: null,
+            completedByName: null,
+            revisionCount: 0,
+            maxRevisions: DB.appSettings.maxDesignRevisions || 3,
+            shortDescription: isBanner ? `${cat} (${w}×${h} ${unit}) — ${headline}` : `ID Card Pegawai — ${personName} (${jobTitle})`,
+            idCardSpec: isBanner ? null : {
+              fullName: personName,
+              contactPhone: phone,
+              jobTitle,
+              branch,
+              specialNotes: notes,
+              photoDataUrl: '',
+              photoValidated: false
+            },
+            bannerSpec: isBanner ? {
+              bannerCategory: cat,
+              presetSize: `${w} × ${h} ${unit}`,
+              width: w,
+              height: h,
+              unit,
+              orientation: w > h ? 'Horizontal (Landscape)' : 'Vertikal (Portrait)',
+              placement: 'Indoor / Outdoor Cabang',
+              headline,
+              bodyInfo: notes,
+              outputSpec: 'CMYK Print Ready',
+              bleedSpec: 'Lebihan 3 cm tiap sisi'
+            } : null,
+            designerNotes: `Diimpor dari ${st.sourceLabel}`,
+            draftPreviewUrl: '',
+            finalFileUrl: '',
+            revisions: [],
+            statusHistory: [
+              { status, by: user.fullName, time: nowStr, note: `Diimpor melalui fitur Import Spreadsheet (${st.sourceLabel}).` }
+            ],
+            isDemo: false
+          });
+          importedCount++;
+        } else if (mod === 'tasks') {
+          const nextCode = `TSK-202610-${String(DB.tasks.length + 1).padStart(3, '0')}`;
+          const picName = pickRowField(r, ['Nama PIC / Pelaksana', 'PIC', 'Pelaksana', 'Assignee'], 2) || user.fullName;
+          const matchedUser = DB.users.find(u => u.fullName.toLowerCase().includes(picName.toLowerCase()));
+          DB.tasks.unshift({
+            id: 'tsk_imp_' + uniqSuffix,
+            taskCode: nextCode,
+            title: pickRowField(r, ['Judul Tugas', 'Judul', 'Task'], 0) || `Tugas #${idx + 1}`,
+            description: pickRowField(r, ['Deskripsi Tugas', 'Deskripsi', 'Keterangan'], 1) || '-',
+            assigneeId: matchedUser ? matchedUser.id : user.id,
+            assigneeName: matchedUser ? matchedUser.fullName : picName,
+            creatorId: user.id,
+            creatorName: user.fullName,
+            priority: pickRowField(r, ['Prioritas', 'Priority'], 3) || 'Sedang',
+            deadline: normalizeSpreadsheetDate(pickRowField(r, ['Deadline', 'Tenggat', 'Tanggal'], 4), '2026-10-31'),
+            status: pickRowField(r, ['Status'], 5) || 'To Do',
+            sourceModule: 'Import Spreadsheet',
+            sourceRefCode: 'XLSX-CSV',
+            checklist: [],
+            comments: [],
+            isDemo: false
+          });
+          importedCount++;
+        } else if (mod === 'users' && user.role === 'MASTER') {
+          const fullName = pickRowField(r, ['Nama Lengkap', 'Nama', 'Full Name'], 0);
+          const email = pickRowField(r, ['Email'], 1);
+          if (!fullName || !email) return;
+          if (DB.users.some(u => u.email.toLowerCase() === email.toLowerCase())) return;
+          const rawRole = (pickRowField(r, ['Role', 'Peran'], 3) || 'USER').toUpperCase();
+          const role = ['MASTER', 'USER', 'GUEST'].includes(rawRole) ? rawRole : 'USER';
+          const branch = normalizeBranchName(pickRowField(r, ['Cabang', 'Branch'], 7) || 'Pusat Jakarta');
+          if (branch && !DB.appSettings.branches.includes(branch)) {
+            DB.appSettings.branches.push(branch);
+          }
+          DB.users.push({
+            id: 'usr_imp_' + uniqSuffix,
+            email,
+            username: email.split('@')[0],
+            passwordHash: pickRowField(r, ['Password', 'Sandi'], 2) || 'BimUser#2026',
+            fullName,
+            employeeId: pickRowField(r, ['NIP', 'ID Pegawai'], 5) || ('BIM-' + Math.floor(200 + Math.random() * 700)),
+            jobTitle: pickRowField(r, ['Jabatan', 'Posisi'], 4) || (role === 'GUEST' ? 'Koordinator Cabang' : 'Tim Kreatif'),
+            phone: pickRowField(r, ['Nomor Telepon', 'No HP', 'WA', 'Telepon'], 6) || '0812-0000-0000',
+            role,
+            subRole: role === 'GUEST' ? 'Tamu Cabang' : 'Tim Internal',
+            branch,
+            isActive: true,
+            themePreference: 'light',
+            aiQuotaLimit: role === 'GUEST' ? 0 : parseCleanNumber(pickRowField(r, ['Kuota Kredit AI', 'Kuota AI'], 8), 250),
+            aiQuotaUsed: 0,
+            lastLoginAt: 'Import Spreadsheet'
+          });
+          importedCount++;
+        }
+      });
+
+      logAudit('Spreadsheet Import', 'BULK_IMPORT', mod.toUpperCase(), `Mengimpor ${importedCount} baris data ke modul ${schema.label} dari ${st.sourceLabel}`);
+      pushNotification('Sistem & Data', `Import Spreadsheet Berhasil (${importedCount} Data)`, `${user.fullName} mengimpor ${importedCount} baris data ke ${schema.label}.`, mod === 'users' ? 'master_settings' : mod, ['MASTER', 'USER']);
+      saveDatabase();
+      closeUniversalModal();
+
+      const targetNav = mod === 'users' ? 'master_settings' : mod;
+      if (mod === 'users') APP_STATE.masterActiveTab = 'users';
+      navigateToModule(targetNav);
+      showToast(`Berhasil mengimpor ${importedCount} baris data ke ${schema.label}!`, 'success');
+    }
+
+    // =========================================================================
+    // 20. DATABASE BACKUP / RESET & INITIALIZATION
     // =========================================================================
     function exportFullDatabaseJson() {
       const jsonStr = JSON.stringify(DB, null, 2);
