@@ -9610,7 +9610,7 @@
                   <tr class="bg-slate-50/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 uppercase">
                     <th class="py-3.5 px-4">ID Order &amp; Jenis</th>
                     <th class="py-3.5 px-4">Pemesan / Nama di Kartu</th>
-                    <th class="py-3.5 px-4">Jabatan &amp; Cabang</th>
+                    <th class="py-3.5 px-4">${isGuest ? 'Cabang' : 'Jabatan &amp; Cabang'}</th>
                     <th class="py-3.5 px-4">Nomor Telepon</th>
                     <th class="py-3.5 px-4">Tanggal Pengajuan</th>
                     <th class="py-3.5 px-4">Status Pengerjaan</th>
@@ -9622,7 +9622,7 @@
                     const isIdCard = o.orderType === 'ID_CARD';
                     const displayPerson = isIdCard && o.idCardSpec ? o.idCardSpec.fullName : o.requesterName;
                     const displayPhone = o.phone || (o.idCardSpec && o.idCardSpec.contactPhone) || '-';
-                    const displayJob = o.jobTitle || (o.idCardSpec && o.idCardSpec.jobTitle) || '-';
+                    const displayJob = isIdCard ? ((o.idCardSpec && o.idCardSpec.jobTitle) || o.jobTitle || '-') : (o.bannerSpec && o.bannerSpec.bannerCategory ? o.bannerSpec.bannerCategory : 'Banner Cetak');
                     const photoUrl = isIdCard && o.idCardSpec && o.idCardSpec.photoDataUrl ? o.idCardSpec.photoDataUrl : '';
                     return `
                       <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
@@ -9647,13 +9647,13 @@
                             ` : ''}
                             <div>
                               <div class="font-bold text-slate-900 dark:text-white">${escapeHtml(displayPerson)}</div>
-                              <div class="text-[11px] text-slate-500">Diajukan oleh: ${escapeHtml(o.requesterName)}</div>
+                              ${!isGuest ? `<div class="text-[11px] text-slate-500">Diajukan oleh: ${escapeHtml(o.requesterName)}</div>` : ''}
                             </div>
                           </div>
                         </td>
                         <td class="py-3.5 px-4">
-                          <div class="font-semibold text-slate-800 dark:text-slate-200">${escapeHtml(displayJob)}</div>
-                          <div class="text-[11px] text-slate-500">${escapeHtml(o.branch)}</div>
+                          ${!isGuest && isIdCard ? `<div class="font-semibold text-slate-800 dark:text-slate-200">${escapeHtml(displayJob)}</div>` : ''}
+                          <div class="${!isGuest && isIdCard ? 'text-[11px] text-slate-500' : 'font-semibold text-slate-800 dark:text-slate-200'}">${escapeHtml(o.branch)}</div>
                         </td>
                         <td class="py-3.5 px-4 font-mono text-[11px] text-slate-700 dark:text-slate-300">${escapeHtml(displayPhone)}</td>
                         <td class="py-3.5 px-4 text-[11px] text-slate-600 dark:text-slate-400">${escapeHtml(o.createdAt)}</td>
@@ -9741,7 +9741,7 @@
                         <h4 class="text-sm font-bold font-display text-slate-900 dark:text-white truncate hover:text-emerald-600 transition">
                           ${escapeHtml(displayPerson)}
                         </h4>
-                        <div class="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">${escapeHtml(displayJob)}</div>
+                        ${!isGuest && isIdCard ? `<div class="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">${escapeHtml(displayJob)}</div>` : ''}
                         <div class="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1">
                           <i data-lucide="map-pin" class="w-3 h-3 text-emerald-600 shrink-0"></i>
                           <span class="truncate">${escapeHtml(o.branch)}</span>
@@ -10661,7 +10661,8 @@
                 </div>
               </div>
 
-              <!-- Collapsible Advanced Print Specifications -->
+              ${user.role !== 'GUEST' ? `
+              <!-- Collapsible Advanced Print Specifications (Hanya untuk Internal USER & MASTER) -->
               <details class="bim-details-adv">
                 <summary>
                   <span class="flex items-center gap-2">
@@ -10682,7 +10683,7 @@
                     </div>
                     <div>
                       <label class="bim-label">Lokasi Pemasangan</label>
-                      <input type="text" id="bnr-place" required value="Area Depan Toko Mitra UMKM / Cabang" class="bim-input" />
+                      <input type="text" id="bnr-place" value="Area Depan Toko Mitra UMKM / Cabang" class="bim-input" />
                     </div>
                   </div>
 
@@ -10728,6 +10729,7 @@
                   </div>
                 </div>
               </details>
+              ` : ''}
 
               <button type="submit" class="w-full py-3.5 px-5 rounded-xl bg-gradient-to-r from-[#14532D] to-[#16A34A] hover:from-[#16A34A] hover:to-[#15803D] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md transition">
                 <i data-lucide="send" class="w-4 h-4 text-[#F4B942]"></i>
@@ -10830,7 +10832,7 @@
         requesterId: user.id,
         requesterName: document.getElementById('bnr-req').value.trim() || user.fullName,
         phone,
-        jobTitle: user.jobTitle || 'Koordinator Cabang',
+        jobTitle: '',
         branch,
         assignedDesignerId: 'usr_designer',
         assignedDesignerName: 'Budi Santoso',
@@ -10850,12 +10852,12 @@
           width: w,
           height: h,
           unit,
-          orientation: document.getElementById('bnr-orient').value,
-          placement: document.getElementById('bnr-place').value.trim(),
+          orientation: (document.getElementById('bnr-orient') || {}).value || (w >= h ? 'Horizontal (Landscape)' : 'Vertikal (Portrait)'),
+          placement: ((document.getElementById('bnr-place') || {}).value || '').trim() || 'Area Depan Toko Mitra UMKM / Cabang',
           headline,
           bodyInfo: document.getElementById('bnr-body').value.trim(),
-          outputSpec: document.getElementById('bnr-bleed').value.trim(),
-          bleedSpec: document.getElementById('bnr-bleed').value.trim()
+          outputSpec: ((document.getElementById('bnr-bleed') || {}).value || '').trim() || 'Mata Ayam Pojok + Lipat Keliling 3 cm',
+          bleedSpec: ((document.getElementById('bnr-bleed') || {}).value || '').trim() || 'Mata Ayam Pojok + Lipat Keliling 3 cm'
         },
         designerNotes: 'Pesanan banner baru masuk ke Antrean Desain.',
         draftPreviewUrl: '',
@@ -10954,11 +10956,13 @@
                     <span class="text-[10px] text-slate-400 block">Nomor Telepon</span>
                     <strong class="font-mono text-slate-900 dark:text-white">${escapeHtml(phone)}</strong>
                   </div>
+                  ${isIdCard && user.role !== 'GUEST' ? `
                   <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
                     <span class="text-[10px] text-slate-400 block">Jabatan</span>
                     <strong class="text-slate-900 dark:text-white">${escapeHtml(jobTitle)}</strong>
                   </div>
-                  <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
+                  ` : ''}
+                  <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 ${(!isIdCard || user.role === 'GUEST') ? 'sm:col-span-2' : ''}">
                     <span class="text-[10px] text-slate-400 block">Cabang</span>
                     <strong class="text-slate-900 dark:text-white">${escapeHtml(ord.branch)}</strong>
                   </div>
