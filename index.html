@@ -3589,7 +3589,11 @@
                     <td class="py-3 px-3">${escapeHtml(o.createdAt)}</td>
                     <td class="py-3 px-3"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">${escapeHtml(o.status)}</span></td>
                     <td class="py-3 px-3 text-right">
-                      <button type="button" onclick="openOrderDetailModal('${o.id}')" class="px-3 py-1 rounded-lg bg-[#172554] text-white text-[11px] font-semibold">Lihat Detail</button>
+                      <div class="inline-flex items-center justify-end gap-1.5">
+                        <button type="button" onclick="openOrderDetailModal('${o.id}')" class="px-2.5 py-1 rounded-lg bg-[#172554] text-white text-[11px] font-semibold">Detail</button>
+                        <button type="button" onclick="openEditDesignOrderModal('${o.id}')" class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500 text-amber-800 dark:text-amber-300 hover:text-white text-[11px] font-semibold transition">Edit</button>
+                        <button type="button" onclick="openDeleteDesignOrderModal('${o.id}')" class="px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-600 text-red-700 dark:text-red-300 hover:text-white text-[11px] font-semibold transition">Hapus</button>
+                      </div>
                     </td>
                   </tr>
                 `).join('')}
@@ -9731,6 +9735,16 @@
                             <button type="button" onclick="openOrderDetailModal('${o.id}')" class="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-[11px] font-bold transition">
                               Detail
                             </button>
+                            ${canModifyDesignOrder(o, user) ? `
+                              <button type="button" onclick="openEditDesignOrderModal('${o.id}')" title="Edit Pesanan" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 dark:text-amber-300 hover:text-white text-[11px] font-bold inline-flex items-center gap-1 transition">
+                                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                                <span>Edit</span>
+                              </button>
+                              <button type="button" onclick="openDeleteDesignOrderModal('${o.id}')" title="Hapus Pesanan" class="px-2.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-600 text-red-700 dark:text-red-300 hover:text-white text-[11px] font-bold inline-flex items-center gap-1 transition">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                <span>Hapus</span>
+                              </button>
+                            ` : ''}
                           </div>
                         </td>
                       </tr>
@@ -9826,10 +9840,22 @@
 
                   <!-- Card Footer: Production Actions & "Desain sudah terkirim" Checkbox/Button -->
                   <div class="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                    <button type="button" onclick="openOrderDetailModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 transition">
-                      <i data-lucide="eye" class="w-3.5 h-3.5 text-slate-500"></i>
-                      <span>Detail &amp; Preview</span>
-                    </button>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <button type="button" onclick="openOrderDetailModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 transition">
+                        <i data-lucide="eye" class="w-3.5 h-3.5 text-slate-500"></i>
+                        <span>Detail &amp; Preview</span>
+                      </button>
+                      ${canModifyDesignOrder(o, user) ? `
+                        <button type="button" onclick="openEditDesignOrderModal('${o.id}')" title="Edit Pesanan" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 dark:text-amber-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
+                          <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                          <span>Edit</span>
+                        </button>
+                        <button type="button" onclick="openDeleteDesignOrderModal('${o.id}')" title="Hapus Pesanan" class="px-2.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-600 text-red-700 dark:text-red-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
+                          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                          <span>Hapus</span>
+                        </button>
+                      ` : ''}
+                    </div>
 
                     <div class="flex items-center gap-1.5">
                       ${canManageStatus ? `
@@ -10038,13 +10064,21 @@
       }
       try {
         if (navigator.clipboard && window.ClipboardItem) {
-          const pngBlob = await convertDataUrlToPngBlob(imgSrc);
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-          if (!silent) showToast('Gambar desain berhasil disalin! Tekan Ctrl+V (Paste) di ruang chat WhatsApp.', 'success');
+          // Gunakan Promise langsung di dalam ClipboardItem agar user gesture Chrome/Edge tidak hilang
+          const blobPromise = convertDataUrlToPngBlob(imgSrc);
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })]);
+          if (!silent) showToast('Gambar desain berhasil disalin! Cukup tekan Ctrl+V (Paste) di ruang chat WhatsApp.', 'success');
           return true;
         }
       } catch (err) {
-        console.warn('Clipboard image copy warning:', err);
+        try {
+          const pngBlob = await convertDataUrlToPngBlob(imgSrc);
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+          if (!silent) showToast('Gambar desain berhasil disalin! Cukup tekan Ctrl+V (Paste) di ruang chat WhatsApp.', 'success');
+          return true;
+        } catch (err2) {
+          console.warn('Clipboard image copy warning:', err2);
+        }
       }
       if (!silent) showToast('Browser ini tidak mendukung salin gambar otomatis. Silakan unduh gambar lalu lampirkan di WhatsApp.', 'info');
       return false;
@@ -11164,6 +11198,16 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
+              ${canModifyDesignOrder(ord, user) ? `
+                <button type="button" onclick="openEditDesignOrderModal('${ord.id}')" class="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 dark:text-amber-300 hover:text-white font-bold flex items-center gap-1.5 transition">
+                  <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                  <span>Edit Pesanan</span>
+                </button>
+                <button type="button" onclick="openDeleteDesignOrderModal('${ord.id}')" class="px-3.5 py-2 rounded-xl bg-red-500/15 hover:bg-red-600 text-red-700 dark:text-red-300 hover:text-white font-bold flex items-center gap-1.5 transition">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  <span>Hapus Pesanan</span>
+                </button>
+              ` : ''}
               ${canManage ? `
                 <button type="button" onclick="openOrderWhatsAppModal('${ord.id}')" class="px-4 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5A] text-white font-bold flex items-center gap-2 shadow-sm transition">
                   <i data-lucide="message-circle" class="w-4 h-4"></i>
@@ -11349,6 +11393,391 @@
       `;
 
       openUniversalModal(`Detail & Preview Order — ${ord.orderId}`, bodyHtml);
+    }
+
+    function canModifyDesignOrder(ord, user) {
+      if (!ord || !user) return false;
+      if (user.role === 'MASTER') return true;
+      if (user.role === 'USER') return checkPermission('design_order', 'edit');
+      if (user.role === 'GUEST') {
+        return isOrderVisibleToGuest(ord, user);
+      }
+      return false;
+    }
+
+    function handleEditOrderIdPhotoUpload(inputEl) {
+      const f = inputEl && inputEl.files && inputEl.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = async function(evt) {
+        let dataUrl = evt.target.result;
+        if (typeof compressImageDataUrl === 'function') {
+          try { dataUrl = await compressImageDataUrl(dataUrl, 900, 0.85); } catch (e) {}
+        }
+        APP_STATE.editOrderTempPhoto = dataUrl;
+        const prevImg = document.getElementById('edit-ord-photo-preview');
+        const prevWrap = document.getElementById('edit-ord-photo-wrap');
+        if (prevImg) prevImg.src = dataUrl;
+        if (prevWrap) prevWrap.classList.remove('hidden');
+        showToast('Foto baru siap disimpan.', 'info');
+      };
+      reader.readAsDataURL(f);
+    }
+
+    function openEditDesignOrderModal(orderId) {
+      const user = getCurrentUser();
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      if (!ord || !canModifyDesignOrder(ord, user)) {
+        showToast('Akses Ditolak: Anda tidak memiliki izin untuk mengedit pesanan ini.', 'error');
+        return;
+      }
+
+      const isIdCard = ord.orderType === 'ID_CARD';
+      APP_STATE.editOrderTempPhoto = isIdCard && ord.idCardSpec ? (ord.idCardSpec.photoDataUrl || '') : '';
+
+      let formHtml = '';
+      if (isIdCard) {
+        const spec = ord.idCardSpec || {};
+        const fullName = spec.fullName || ord.requesterName || '';
+        const phone = ord.phone || spec.contactPhone || '';
+        const jobTitle = spec.jobTitle || ord.jobTitle || '';
+        const branch = ord.branch || user.branch || '';
+        const notes = spec.specialNotes || '';
+        const hasPhoto = Boolean(APP_STATE.editOrderTempPhoto);
+
+        formHtml = `
+          <form onsubmit="submitEditDesignOrderForm(event, '${ord.id}')" class="space-y-4 text-xs">
+            <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between">
+              <div>
+                <div class="font-bold text-slate-900 dark:text-white">Edit Pesanan ID Card — <span class="font-mono text-emerald-700 dark:text-emerald-400">${escapeHtml(ord.orderId)}</span></div>
+                <div class="text-[11px] text-slate-500">Perbarui data pemesan atau foto ID Card di bawah ini.</div>
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#14532D] text-white">${escapeHtml(ord.status)}</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label class="bim-label">Nama Lengkap di ID Card <span class="text-red-500">*</span></label>
+                <input type="text" id="edit-idc-name" required value="${escapeHtml(fullName)}" class="bim-input" />
+              </div>
+              <div>
+                <label class="bim-label">Nomor Telepon / WA <span class="text-red-500">*</span></label>
+                <input type="tel" id="edit-idc-phone" required value="${escapeHtml(phone)}" class="bim-input font-mono" />
+              </div>
+              ${user.role !== 'GUEST' ? `
+                <div>
+                  <label class="bim-label">Jabatan</label>
+                  <input type="text" id="edit-idc-job" value="${escapeHtml(jobTitle)}" class="bim-input" />
+                </div>
+              ` : ''}
+              <div class="${user.role === 'GUEST' ? 'sm:col-span-2' : ''}">
+                <label class="bim-label">Cabang <span class="text-red-500">*</span></label>
+                <input type="text" id="edit-idc-branch" required value="${escapeHtml(branch)}" class="bim-input" />
+              </div>
+            </div>
+
+            <div>
+              <label class="bim-label">Catatan Tambahan (Opsional)</label>
+              <textarea id="edit-idc-notes" rows="2" class="bim-input" placeholder="Catatan tambahan untuk tim desain...">${escapeHtml(notes)}</textarea>
+            </div>
+
+            <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <label class="font-bold text-[11px] text-slate-800 dark:text-slate-200">Foto Pegawai (Opsional — Ganti Jika Perlu)</label>
+                <label class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold cursor-pointer hover:bg-slate-100 transition">
+                  <span>Pilih Foto Baru</span>
+                  <input type="file" accept="image/*" onchange="handleEditOrderIdPhotoUpload(this)" class="hidden" />
+                </label>
+              </div>
+              <div id="edit-ord-photo-wrap" class="${hasPhoto ? '' : 'hidden'} flex items-center gap-3 pt-1">
+                <img id="edit-ord-photo-preview" src="${hasPhoto ? APP_STATE.editOrderTempPhoto : ''}" alt="Preview Foto" class="w-14 h-16 rounded-xl object-cover border border-slate-300 dark:border-slate-700" />
+                <span class="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">Foto tersimpan pada pesanan ini</span>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button type="button" onclick="closeUniversalModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">Batal</button>
+              <button type="submit" class="px-5 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+                <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                <span>Simpan Perubahan</span>
+              </button>
+            </div>
+          </form>
+        `;
+      } else {
+        const spec = ord.bannerSpec || {};
+        const reqName = ord.requesterName || '';
+        const phone = ord.phone || '';
+        const branch = ord.branch || user.branch || '';
+        const cat = spec.bannerCategory || 'Banner BWU (Mitra UMKM)';
+        const width = spec.width || 3;
+        const height = spec.height || 1;
+        const unit = spec.unit || 'meter';
+        const headline = spec.headline || '';
+        const bnrInfo = spec.bannerInfo !== undefined ? spec.bannerInfo : (spec.bodyInfo || '');
+        const bnrAddress = spec.bannerAddress || '';
+        const bnrPhone = spec.bannerPhone || '';
+
+        const catOptions = ['Banner BWU (Mitra UMKM)', ...(DB.appSettings.bannerCategories || [])];
+        const uniqueCats = Array.from(new Set([cat, ...catOptions]));
+
+        formHtml = `
+          <form onsubmit="submitEditDesignOrderForm(event, '${ord.id}')" class="space-y-4 text-xs">
+            <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between">
+              <div>
+                <div class="font-bold text-slate-900 dark:text-white">Edit Pesanan Banner — <span class="font-mono text-emerald-700 dark:text-emerald-400">${escapeHtml(ord.orderId)}</span></div>
+                <div class="text-[11px] text-slate-500">Perbarui ukuran, judul toko, atau isi informasi banner di bawah ini.</div>
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#14532D] text-white">${escapeHtml(ord.status)}</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="bim-label">Nama Pemesan <span class="text-red-500">*</span></label>
+                <input type="text" id="edit-bnr-reqname" required value="${escapeHtml(reqName)}" class="bim-input" />
+              </div>
+              <div>
+                <label class="bim-label">Nomor Telepon / WA <span class="text-red-500">*</span></label>
+                <input type="tel" id="edit-bnr-phone" required value="${escapeHtml(phone)}" class="bim-input font-mono" />
+              </div>
+              <div>
+                <label class="bim-label">Cabang <span class="text-red-500">*</span></label>
+                <input type="text" id="edit-bnr-branch" required value="${escapeHtml(branch)}" class="bim-input" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="bim-label">Lebar <span class="text-red-500">*</span></label>
+                <input type="number" step="0.1" id="edit-bnr-width" required value="${escapeHtml(String(width))}" class="bim-input" />
+              </div>
+              <div>
+                <label class="bim-label">Tinggi <span class="text-red-500">*</span></label>
+                <input type="number" step="0.1" id="edit-bnr-height" required value="${escapeHtml(String(height))}" class="bim-input" />
+              </div>
+              <div>
+                <label class="bim-label">Satuan <span class="text-red-500">*</span></label>
+                <select id="edit-bnr-unit" class="bim-input">
+                  ${['meter', 'cm', 'mm'].map(u => `<option value="${u}" ${unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="bim-label">Kategori Banner <span class="text-red-500">*</span></label>
+                <select id="edit-bnr-cat" class="bim-input">
+                  ${uniqueCats.map(c => `<option value="${escapeHtml(c)}" ${cat === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="bim-label">Nama Toko / Judul Utama Banner <span class="text-red-500">*</span></label>
+                <input type="text" id="edit-bnr-headline" required value="${escapeHtml(headline)}" class="bim-input" />
+              </div>
+            </div>
+
+            <div>
+              <label class="bim-label">Informasi di Banner <span class="text-slate-400 font-normal">(Opsional — Isi jika ada)</span></label>
+              <textarea id="edit-bnr-info" rows="2" class="bim-input" placeholder="Contoh: Menyediakan Beras, Telur, Isi Ulang Galon, dll...">${escapeHtml(bnrInfo)}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="bim-label">Alamat di Banner <span class="text-slate-400 font-normal">(Opsional — Isi jika ada)</span></label>
+                <input type="text" id="edit-bnr-address" value="${escapeHtml(bnrAddress)}" class="bim-input" placeholder="Contoh: Jl. Raya Babat Tuban..." />
+              </div>
+              <div>
+                <label class="bim-label">Nomor HP di Banner <span class="text-slate-400 font-normal">(Opsional — Isi jika ada)</span></label>
+                <input type="tel" id="edit-bnr-banner-phone" value="${escapeHtml(bnrPhone)}" class="bim-input font-mono" placeholder="Contoh: 0857-3343-7117" />
+              </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button type="button" onclick="closeUniversalModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">Batal</button>
+              <button type="submit" class="px-5 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+                <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                <span>Simpan Perubahan</span>
+              </button>
+            </div>
+          </form>
+        `;
+      }
+
+      openUniversalModal(`Edit Pesanan — ${ord.orderId}`, formHtml);
+    }
+
+    function submitEditDesignOrderForm(e, orderId) {
+      e.preventDefault();
+      const user = getCurrentUser();
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      if (!ord || !canModifyDesignOrder(ord, user)) {
+        showToast('Akses Ditolak: Tidak dapat mengubah pesanan ini.', 'error');
+        return;
+      }
+
+      if (ord.orderType === 'ID_CARD') {
+        const fullName = (document.getElementById('edit-idc-name')?.value || '').trim();
+        const phone = (document.getElementById('edit-idc-phone')?.value || '').trim();
+        const branch = (document.getElementById('edit-idc-branch')?.value || '').trim();
+        const jobEl = document.getElementById('edit-idc-job');
+        const jobTitle = jobEl ? jobEl.value.trim() : (ord.jobTitle || (ord.idCardSpec && ord.idCardSpec.jobTitle) || '-');
+        const notes = (document.getElementById('edit-idc-notes')?.value || '').trim();
+
+        if (!fullName || !phone || !branch) {
+          showToast('Harap lengkapi Nama Lengkap, Nomor Telepon, dan Cabang.', 'error');
+          return;
+        }
+        if (!validatePhoneFormat(phone)) {
+          showToast('Format Nomor Telepon tidak valid.', 'error');
+          return;
+        }
+
+        ord.requesterName = fullName;
+        ord.phone = phone;
+        ord.branch = branch;
+        ord.jobTitle = jobTitle;
+        ord.shortDescription = `ID Card — ${fullName} (${branch})`;
+        ord.idCardSpec = {
+          ...(ord.idCardSpec || {}),
+          fullName,
+          contactPhone: phone,
+          jobTitle,
+          branch,
+          specialNotes: notes || 'Desain ID Card Standar Korporat BIM',
+          photoDataUrl: APP_STATE.editOrderTempPhoto || (ord.idCardSpec && ord.idCardSpec.photoDataUrl) || ''
+        };
+      } else {
+        const reqName = (document.getElementById('edit-bnr-reqname')?.value || '').trim();
+        const phone = (document.getElementById('edit-bnr-phone')?.value || '').trim();
+        const branch = (document.getElementById('edit-bnr-branch')?.value || '').trim();
+        const w = parseFloat(document.getElementById('edit-bnr-width')?.value) || 3;
+        const h = parseFloat(document.getElementById('edit-bnr-height')?.value) || 1;
+        const unit = document.getElementById('edit-bnr-unit')?.value || 'meter';
+        const cat = document.getElementById('edit-bnr-cat')?.value || 'Banner BWU (Mitra UMKM)';
+        const headline = (document.getElementById('edit-bnr-headline')?.value || '').trim();
+        const bannerInfo = (document.getElementById('edit-bnr-info')?.value || '').trim();
+        const bannerAddress = (document.getElementById('edit-bnr-address')?.value || '').trim();
+        const bannerPhone = (document.getElementById('edit-bnr-banner-phone')?.value || '').trim();
+
+        if (!reqName || !phone || !branch || !headline) {
+          showToast('Harap lengkapi Nama Pemesan, Nomor Telepon, Cabang, dan Judul Banner.', 'error');
+          return;
+        }
+        if (!validatePhoneFormat(phone)) {
+          showToast('Format Nomor Telepon Pemesan tidak valid.', 'error');
+          return;
+        }
+
+        const combinedParts = [];
+        if (bannerInfo) combinedParts.push(`Informasi: ${bannerInfo}`);
+        if (bannerAddress) combinedParts.push(`Alamat: ${bannerAddress}`);
+        if (bannerPhone) combinedParts.push(`No. HP: ${bannerPhone}`);
+        const bodyCombined = combinedParts.length > 0 ? combinedParts.join(' | ') : '-';
+
+        ord.requesterName = reqName;
+        ord.phone = phone;
+        ord.branch = branch;
+        ord.shortDescription = `${cat} (${w}×${h} ${unit}) — ${headline}`;
+        ord.bannerSpec = {
+          ...(ord.bannerSpec || {}),
+          bannerCategory: cat,
+          width: w,
+          height: h,
+          unit,
+          orientation: w >= h ? 'Horizontal (Landscape)' : 'Vertikal (Portrait)',
+          headline,
+          bannerInfo,
+          bannerAddress,
+          bannerPhone,
+          bodyInfo: bodyCombined
+        };
+      }
+
+      if (!Array.isArray(ord.statusHistory)) ord.statusHistory = [];
+      ord.statusHistory.push({
+        status: ord.status,
+        by: user.fullName,
+        time: getNowWIB(),
+        note: `Data pesanan diperbarui oleh ${user.fullName} (${user.branch || user.role})`
+      });
+
+      logAudit('Antrean Desain', 'EDIT_ORDER', ord.orderId, `${user.fullName} memperbarui rincian pesanan ${ord.orderId} (${ord.branch})`);
+      saveDatabase();
+      closeUniversalModal();
+      renderDesignOrder();
+      if (APP_STATE.activeModule === 'dashboard') renderDashboard();
+      showToast(`Pesanan ${ord.orderId} berhasil diperbarui!`, 'success');
+    }
+
+    function openDeleteDesignOrderModal(orderId) {
+      const user = getCurrentUser();
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      if (!ord || !canModifyDesignOrder(ord, user)) {
+        showToast('Akses Ditolak: Anda tidak memiliki izin untuk menghapus pesanan ini.', 'error');
+        return;
+      }
+
+      const isIdCard = ord.orderType === 'ID_CARD';
+      const displayPerson = isIdCard && ord.idCardSpec ? ord.idCardSpec.fullName : ord.requesterName;
+
+      const bodyHtml = `
+        <div class="space-y-4 text-xs">
+          <div class="p-4 rounded-2xl bg-red-500/10 border border-red-500/25 flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0">
+              <i data-lucide="trash-2" class="w-5 h-5"></i>
+            </div>
+            <div class="space-y-1">
+              <h4 class="text-sm font-extrabold text-red-700 dark:text-red-300">Hapus Pesanan ${escapeHtml(ord.orderId)}?</h4>
+              <p class="text-slate-600 dark:text-slate-300">
+                Apakah Anda yakin ingin menghapus pesanan <strong>${isIdCard ? 'ID Card' : 'Banner Cetak'}</strong> atas nama <strong>${escapeHtml(displayPerson)}</strong> (${escapeHtml(ord.branch)})?
+              </p>
+              <p class="text-[11px] text-slate-500">Tindakan ini akan menghapus pesanan secara permanen dari daftar antrean.</p>
+            </div>
+          </div>
+
+          <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+            <div><span class="text-slate-400">ID Order:</span> <strong class="font-mono">${escapeHtml(ord.orderId)}</strong></div>
+            <div><span class="text-slate-400">Rincian:</span> <strong>${escapeHtml(ord.shortDescription)}</strong></div>
+            <div><span class="text-slate-400">Status Saat Ini:</span> <strong>${escapeHtml(ord.status)}</strong></div>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+            <button type="button" onclick="closeUniversalModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">Batal</button>
+            <button type="button" onclick="confirmDeleteDesignOrderNow('${ord.id}')" class="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Ya, Hapus Pesanan</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      openUniversalModal(`Konfirmasi Hapus Pesanan — ${ord.orderId}`, bodyHtml);
+    }
+
+    function confirmDeleteDesignOrderNow(orderId) {
+      const user = getCurrentUser();
+      const idx = DB.designOrders.findIndex(o => o.id === orderId);
+      if (idx === -1) {
+        showToast('Pesanan tidak ditemukan.', 'error');
+        return;
+      }
+      const ord = DB.designOrders[idx];
+      if (!canModifyDesignOrder(ord, user)) {
+        showToast('Akses Ditolak: Anda tidak memiliki izin untuk menghapus pesanan ini.', 'error');
+        return;
+      }
+
+      const deletedCode = ord.orderId;
+      const deletedBranch = ord.branch;
+      DB.designOrders.splice(idx, 1);
+
+      logAudit('Antrean Desain', 'DELETE_ORDER', deletedCode, `${user.fullName} menghapus pesanan ${deletedCode} (${deletedBranch})`);
+      saveDatabase();
+      closeUniversalModal();
+      renderSidebar();
+      renderDesignOrder();
+      if (APP_STATE.activeModule === 'dashboard') renderDashboard();
+      showToast(`Pesanan ${deletedCode} berhasil dihapus.`, 'info');
     }
 
     function handleDesignerDraftUpload(inputEl, orderId) {
