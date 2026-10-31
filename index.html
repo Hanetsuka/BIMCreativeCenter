@@ -9935,10 +9935,18 @@
 
     function buildOrderWaMessage(ord, templateKey) {
       const isIdCard = ord.orderType === 'ID_CARD';
-      const jenis = isIdCard ? 'ID Card' : 'Banner';
-      const namaKartu = isIdCard && ord.idCardSpec ? ` atas nama *${ord.idCardSpec.fullName}*` : '';
+      let ref = '';
+      if (isIdCard) {
+        const namaKartu = (ord.idCardSpec && ord.idCardSpec.fullName) || ord.requesterName || '';
+        ref = `pesanan desain *ID Card*${namaKartu ? ` atas nama *${namaKartu}*` : ''}`;
+      } else {
+        const judulBanner = (ord.bannerSpec && ord.bannerSpec.headline) ? ord.bannerSpec.headline.trim() : '';
+        const ukuranBanner = (ord.bannerSpec && ord.bannerSpec.width && ord.bannerSpec.height)
+          ? `${ord.bannerSpec.width} × ${ord.bannerSpec.height} ${ord.bannerSpec.unit || 'meter'}`
+          : '';
+        ref = `pesanan desain *Banner${judulBanner ? ' ' + judulBanner : ''}*${ukuranBanner ? ` (Ukuran *${ukuranBanner}*)` : ''}`;
+      }
       const sapaan = `Halo ${ord.requesterName || 'Bapak/Ibu'},`;
-      const ref = `pesanan desain *${jenis}*${namaKartu} (ID: *${ord.orderId}*)`;
       const penutup = `Terima kasih.\n— Tim Desain ${DB.appSettings.appName || 'BIM Creative Hub'}`;
       const body = {
         printing: `${ref} sudah *selesai didesain* dan saat ini *sedang dalam proses cetak*. Kami akan mengabari kembali setelah hasil cetak siap diambil/dikirim.`,
@@ -10651,13 +10659,24 @@
                   </div>
                   <div>
                     <label class="bim-label">Nama Toko / Judul Utama Banner <span class="text-red-500">*</span></label>
-                    <input type="text" id="bnr-headline" required value="TOKO SEMBAKO" oninput="updateBannerLivePreview()" placeholder="Contoh: TOKO SEMBAKO / WARUNG BERKAH" class="bim-input" />
+                    <input type="text" id="bnr-headline" required value="" oninput="updateBannerLivePreview()" placeholder="Contoh: TOKO SEMBAKO / WARUNG BERKAH" class="bim-input" />
                   </div>
                 </div>
 
                 <div>
-                  <label class="bim-label">Daftar Produk / Informasi &amp; Alamat di Banner <span class="text-red-500">*</span></label>
-                  <textarea id="bnr-body" required rows="2" oninput="updateBannerLivePreview()" placeholder="Tuliskan produk yang disediakan dan alamat usaha/cabang..." class="bim-input">Menyediakan: Beras, Telur, Isi Ulang Galon, Minyak Goreng, LPG, dll • Menerima pesanan kerupuk • Jl. Sunan Kalijaga 004/002, Wadeng, Sidayu</textarea>
+                  <label class="bim-label">Informasi di Banner <span class="text-slate-400 font-normal">(Opsional — Isi jika ada)</span></label>
+                  <textarea id="bnr-body" rows="2" oninput="updateBannerLivePreview()" placeholder="Contoh: Menyediakan Beras, Telur, Isi Ulang Galon, Minyak Goreng, LPG, dll..." class="bim-input"></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label class="bim-label">Alamat di Banner <span class="text-slate-400 font-normal">(Opsional — Isi jika ada)</span></label>
+                    <input type="text" id="bnr-address" value="" oninput="updateBannerLivePreview()" placeholder="Contoh: Jl. Raya Babat Tuban, Banjarsari..." class="bim-input" />
+                  </div>
+                  <div>
+                    <label class="bim-label">Nomor HP di Banner <span class="text-slate-400 font-normal">(Opsional — Isi jika ada)</span></label>
+                    <input type="tel" id="bnr-banner-phone" value="" oninput="updateBannerLivePreview()" placeholder="Contoh: 0857-3343-7117" class="bim-input" />
+                  </div>
                 </div>
               </div>
 
@@ -10766,10 +10785,10 @@
                 <span id="bnr-prev-size" class="px-2.5 py-0.5 rounded-lg bg-[#14532D] text-white font-bold text-[10px]">3 × 1 meter</span>
               </div>
               <div id="bnr-prev-headline" class="font-display font-extrabold text-sm text-slate-900 dark:text-white uppercase">
-                TOKO SEMBAKO
+                NAMA TOKO / JUDUL BANNER
               </div>
               <p id="bnr-prev-body" class="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                Menyediakan: Beras, Telur, Isi Ulang Galon, Minyak Goreng, LPG, dll • Menerima pesanan kerupuk • Jl. Sunan Kalijaga 004/002, Wadeng, Sidayu
+                Informasi produk, alamat, dan nomor HP di banner akan tampil di sini sesuai yang Anda ketik.
               </p>
               <div class="text-[11px] text-slate-500 pt-1 border-t border-slate-200/70 dark:border-slate-800">
                 Cabang: <strong id="bnr-prev-branch" class="text-slate-800 dark:text-slate-200">${escapeHtml(user.branch || 'Cabang')}</strong>
@@ -10781,19 +10800,27 @@
     }
 
     function updateBannerLivePreview() {
-      const hl = ((document.getElementById('bnr-headline') || {}).value || '').trim() || 'TOKO SEMBAKO';
-      const bd = ((document.getElementById('bnr-body') || {}).value || '').trim() || 'Menyediakan berbagai kebutuhan harian...';
+      const hl = ((document.getElementById('bnr-headline') || {}).value || '').trim() || 'NAMA TOKO / JUDUL BANNER';
+      const bd = ((document.getElementById('bnr-body') || {}).value || '').trim();
+      const addr = ((document.getElementById('bnr-address') || {}).value || '').trim();
+      const bPhone = ((document.getElementById('bnr-banner-phone') || {}).value || '').trim();
       const br = ((document.getElementById('bnr-branch') || {}).value || '').trim() || 'BMT BIM Jatim';
       const w = ((document.getElementById('bnr-width') || {}).value || '3');
       const h = ((document.getElementById('bnr-height') || {}).value || '1');
       const u = ((document.getElementById('bnr-unit') || {}).value || 'meter');
+
+      const parts = [];
+      if (bd) parts.push(bd);
+      if (addr) parts.push(`Alamat: ${addr}`);
+      if (bPhone) parts.push(`No. HP: ${bPhone}`);
+      const combinedPreview = parts.length > 0 ? parts.join(' • ') : 'Informasi produk, alamat, dan nomor HP di banner (opsional)...';
 
       const elHl = document.getElementById('bnr-prev-headline');
       const elBd = document.getElementById('bnr-prev-body');
       const elBr = document.getElementById('bnr-prev-branch');
       const elSz = document.getElementById('bnr-prev-size');
       if (elHl) elHl.textContent = hl;
-      if (elBd) elBd.textContent = bd;
+      if (elBd) elBd.textContent = combinedPreview;
       if (elBr) elBr.textContent = br;
       if (elSz) elSz.textContent = `${w} × ${h} ${u}`;
     }
@@ -10825,6 +10852,15 @@
       const phone = document.getElementById('bnr-phone').value.trim();
       const nowStr = getNowWIB();
 
+      const bnrInfo = ((document.getElementById('bnr-body') || {}).value || '').trim();
+      const bnrAddress = ((document.getElementById('bnr-address') || {}).value || '').trim();
+      const bnrContactPhone = ((document.getElementById('bnr-banner-phone') || {}).value || '').trim();
+      const bodyParts = [];
+      if (bnrInfo) bodyParts.push(bnrInfo);
+      if (bnrAddress) bodyParts.push(`Alamat: ${bnrAddress}`);
+      if (bnrContactPhone) bodyParts.push(`No. HP: ${bnrContactPhone}`);
+      const combinedBodyInfo = bodyParts.length > 0 ? bodyParts.join(' • ') : '-';
+
       const newOrder = {
         id: 'ord_' + Date.now(),
         orderId: autoOrderId,
@@ -10855,7 +10891,10 @@
           orientation: (document.getElementById('bnr-orient') || {}).value || (w >= h ? 'Horizontal (Landscape)' : 'Vertikal (Portrait)'),
           placement: ((document.getElementById('bnr-place') || {}).value || '').trim() || 'Area Depan Toko Mitra UMKM / Cabang',
           headline,
-          bodyInfo: document.getElementById('bnr-body').value.trim(),
+          bannerInfo: bnrInfo,
+          bannerAddress: bnrAddress,
+          bannerPhone: bnrContactPhone,
+          bodyInfo: combinedBodyInfo,
           outputSpec: ((document.getElementById('bnr-bleed') || {}).value || '').trim() || 'Mata Ayam Pojok + Lipat Keliling 3 cm',
           bleedSpec: ((document.getElementById('bnr-bleed') || {}).value || '').trim() || 'Mata Ayam Pojok + Lipat Keliling 3 cm'
         },
@@ -10970,14 +11009,35 @@
 
                 ${!isIdCard && ord.bannerSpec ? `
                   <div class="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px]">
-                    <strong>Spesifikasi Cetak Banner:</strong> Ukuran ${ord.bannerSpec.width} × ${ord.bannerSpec.height} ${escapeHtml(ord.bannerSpec.unit)} (${escapeHtml(ord.bannerSpec.orientation)}) • ${escapeHtml(ord.bannerSpec.bleedSpec || '')}
+                    <strong>Spesifikasi Cetak Banner:</strong> Ukuran ${ord.bannerSpec.width} × ${ord.bannerSpec.height} ${escapeHtml(ord.bannerSpec.unit)} (${escapeHtml(ord.bannerSpec.orientation)}) • Judul: <strong>${escapeHtml(ord.bannerSpec.headline || '-')}</strong>
                   </div>
-                ` : ''}
-
-                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
-                  <span class="text-[10px] text-slate-400 block">Catatan Tambahan</span>
-                  <p class="text-slate-700 dark:text-slate-300 mt-0.5">${escapeHtml(notes)}</p>
-                </div>
+                  ${(ord.bannerSpec.bannerInfo !== undefined || ord.bannerSpec.bannerAddress !== undefined || ord.bannerSpec.bannerPhone !== undefined) ? `
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 sm:col-span-2">
+                        <span class="text-[10px] text-slate-400 block">Informasi di Banner</span>
+                        <p class="text-slate-800 dark:text-slate-200 font-medium mt-0.5">${escapeHtml(ord.bannerSpec.bannerInfo || '-')}</p>
+                      </div>
+                      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
+                        <span class="text-[10px] text-slate-400 block">Alamat di Banner</span>
+                        <p class="text-slate-800 dark:text-slate-200 font-medium mt-0.5">${escapeHtml(ord.bannerSpec.bannerAddress || '-')}</p>
+                      </div>
+                      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
+                        <span class="text-[10px] text-slate-400 block">Nomor HP di Banner</span>
+                        <p class="font-mono text-slate-800 dark:text-slate-200 font-medium mt-0.5">${escapeHtml(ord.bannerSpec.bannerPhone || '-')}</p>
+                      </div>
+                    </div>
+                  ` : `
+                    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
+                      <span class="text-[10px] text-slate-400 block">Informasi di Banner</span>
+                      <p class="text-slate-700 dark:text-slate-300 mt-0.5">${escapeHtml(notes)}</p>
+                    </div>
+                  `}
+                ` : `
+                  <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
+                    <span class="text-[10px] text-slate-400 block">Catatan Tambahan</span>
+                    <p class="text-slate-700 dark:text-slate-300 mt-0.5">${escapeHtml(notes)}</p>
+                  </div>
+                `}
               </div>
 
               <!-- Completion Information Box -->
