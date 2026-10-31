@@ -361,10 +361,94 @@
       animation: bimShimmerBar 1.15s ease-in-out infinite;
       border-radius: 9999px;
     }
+
+    /* Order Status Celebration & Waiting Animations */
+    @keyframes bimPopSpring {
+      0% { opacity: 0; transform: scale(0.68) translateY(18px); }
+      65% { opacity: 1; transform: scale(1.04) translateY(-3px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes bimPulseSonar {
+      0% { transform: scale(0.92); opacity: 0.75; }
+      100% { transform: scale(1.75); opacity: 0; }
+    }
+    @keyframes bimFloatBob {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-7px) rotate(-3deg); }
+    }
+    @keyframes bimDotWave {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40% { transform: translateY(-4px); opacity: 1; }
+    }
+    @keyframes bimCheckStroke {
+      0% { stroke-dashoffset: 80; }
+      100% { stroke-dashoffset: 0; }
+    }
+    @keyframes bimConfettiDrop {
+      0% { transform: translateY(-20px) rotate(0deg) scale(0.8); opacity: 1; }
+      80% { opacity: 1; }
+      100% { transform: translateY(340px) rotate(540deg) scale(1); opacity: 0; }
+    }
+    @keyframes bimStripeMove {
+      0% { background-position: 0 0; }
+      100% { background-position: 28px 0; }
+    }
+    .bim-anim-card-pop {
+      animation: bimPopSpring 0.48s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .bim-anim-sonar {
+      animation: bimPulseSonar 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+    .bim-anim-sonar-delay {
+      animation: bimPulseSonar 1.8s cubic-bezier(0, 0, 0.2, 1) 0.65s infinite;
+    }
+    .bim-anim-float {
+      animation: bimFloatBob 2.4s ease-in-out infinite;
+    }
+    .bim-dot-1 { display: inline-block; animation: bimDotWave 1.3s infinite 0s; }
+    .bim-dot-2 { display: inline-block; animation: bimDotWave 1.3s infinite 0.2s; }
+    .bim-dot-3 { display: inline-block; animation: bimDotWave 1.3s infinite 0.4s; }
+    .bim-check-svg path {
+      stroke-dasharray: 80;
+      stroke-dashoffset: 80;
+      animation: bimCheckStroke 0.65s cubic-bezier(0.65, 0, 0.45, 1) 0.18s forwards;
+    }
+    .bim-progress-Wait {
+      background-image: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.25) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.25) 50%,
+        rgba(255, 255, 255, 0.25) 75%,
+        transparent 75%,
+        transparent
+      );
+      background-size: 28px 28px;
+      animation: bimStripeMove 0.9s linear infinite;
+    }
+    .bim-confetti-piece {
+      position: absolute;
+      top: -10px;
+      width: 9px;
+      height: 14px;
+      border-radius: 3px;
+      pointer-events: none;
+      animation: bimConfettiDrop 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
   </style>
 </head>
 
 <body class="min-h-screen flex flex-col selection:bg-emerald-600 selection:text-white">
+
+  <!-- ===================================================================== -->
+  <!-- ANIMATED ORDER STATUS SPLASH OVERLAY (MASUK / DIKERJAKAN / SELESAI)   -->
+  <!-- ===================================================================== -->
+  <div id="bim-order-anim-overlay" onclick="if(event.target===this) closeOrderStatusAnimation()" class="fixed inset-0 z-[85] hidden bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 transition-opacity duration-300">
+    <div id="bim-order-anim-content" class="relative overflow-hidden bg-white dark:bg-[#111C2E] border border-slate-200/90 dark:border-slate-700/90 rounded-3xl p-6 sm:p-8 shadow-2xl max-w-md w-full text-center bim-anim-card-pop">
+      <!-- Populated dynamically by showOrderStatusAnimation() -->
+    </div>
+  </div>
 
   <!-- ===================================================================== -->
   <!-- GLOBAL LOADING OVERLAY & TOP PROGRESS BAR                             -->
@@ -420,44 +504,106 @@
 
       <!-- Login Body -->
       <div class="p-7 sm:p-8">
-        <!-- TAB 1: MASUK SEBAGAI TAMU (Isi Nama & Cabang Manual -> Langsung ke Menu Order Desain) -->
-        <div id="login-panel-guest" class="space-y-5">
+        <!-- TAB 1: MASUK SEBAGAI TAMU (Pilih Cabang / Nomor WA / Cek Pesanan Cepat) -->
+        <div id="login-panel-guest" class="space-y-4">
           <div class="space-y-1">
-            <h2 class="text-base font-extrabold font-display text-slate-900 dark:text-white">Akses Cepat Tamu Cabang</h2>
+            <h2 class="text-base font-extrabold font-display text-slate-900 dark:text-white">Akses Tamu Cabang &amp; Cek Pesanan</h2>
             <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              Isi nama dan cabang Anda secara manual untuk langsung menuju halaman <strong>Order Desain (ID Card &amp; Banner)</strong>.
+              Pilih <strong>Cabang</strong> Anda untuk membuat order baru atau melihat ulang riwayat pesanan cabang Anda.
             </p>
           </div>
 
-          <form id="form-guest-login" onsubmit="handleGuestManualLoginSubmit(event)" class="space-y-4">
+          <form id="form-guest-login" onsubmit="handleGuestManualLoginSubmit(event)" class="space-y-3.5">
             <div>
-              <label class="bim-label" for="guest-login-name">Nama Lengkap <span class="text-red-500">*</span></label>
+              <label class="bim-label" for="guest-login-name">Nama Lengkap Pemesan <span class="text-red-500">*</span></label>
               <div class="relative">
                 <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                 <input id="guest-login-name" type="text" required placeholder="Masukkan nama lengkap Anda" class="bim-input pl-10" />
               </div>
             </div>
             <div>
-              <label class="bim-label" for="guest-login-branch">Cabang <span class="text-red-500">*</span></label>
+              <label class="bim-label" for="guest-login-branch-select">Pilih Cabang <span class="text-red-500">*</span></label>
               <div class="relative">
                 <i data-lucide="map-pin" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-                <input id="guest-login-branch" type="text" required placeholder="Ketik nama cabang (contoh: Surabaya)" class="bim-input pl-10" />
+                <select id="guest-login-branch-select" onchange="handleGuestBranchSelectChange(this.value)" class="bim-input pl-10">
+                  <option value="Cabang Tuban">Cabang Tuban</option>
+                  <option value="Cabang Bangilan">Cabang Bangilan</option>
+                  <option value="Cabang Plumpang">Cabang Plumpang</option>
+                  <option value="Cabang Kerek">Cabang Kerek</option>
+                  <option value="Cabang Rengel">Cabang Rengel</option>
+                  <option value="Cabang Palang">Cabang Palang</option>
+                  <option value="Cabang Merakurak">Cabang Merakurak</option>
+                  <option value="Cabang Jatirogo">Cabang Jatirogo</option>
+                  <option value="Cabang Sumberrejo">Cabang Sumberrejo</option>
+                  <option value="Cabang Babat">Cabang Babat</option>
+                  <option value="Cabang Brondong">Cabang Brondong</option>
+                  <option value="Cabang Soko">Cabang Soko</option>
+                  <option value="Cabang Jenu">Cabang Jenu</option>
+                  <option value="Cabang Semanding">Cabang Semanding</option>
+                  <option value="Cabang Bancar">Cabang Bancar</option>
+                  <option value="Cabang Tambakboyo">Cabang Tambakboyo</option>
+                  <option value="Cabang Singgahan">Cabang Singgahan</option>
+                  <option value="Cabang Maduran">Cabang Maduran</option>
+                  <option value="Cabang Sugio">Cabang Sugio</option>
+                  <option value="Cabang Kedungadem">Cabang Kedungadem</option>
+                  <option value="Cabang Karanggeneng">Cabang Karanggeneng</option>
+                  <option value="Cabang Bungah">Cabang Bungah</option>
+                  <option value="Cabang Dukun">Cabang Dukun</option>
+                  <option value="Cabang Dander">Cabang Dander</option>
+                  <option value="Cabang Kapas">Cabang Kapas</option>
+                  <option value="Cabang Baureno">Cabang Baureno</option>
+                  <option value="Cabang Paciran">Cabang Paciran</option>
+                  <option value="Cabang Jombang">Cabang Jombang</option>
+                  <option value="Cabang Sidayu">Cabang Sidayu</option>
+                  <option value="Cabang Ngimbang">Cabang Ngimbang</option>
+                  <option value="__CUSTOM__">+ Ketik Nama Cabang Lainnya...</option>
+                </select>
+              </div>
+              <div id="guest-login-branch-custom-wrap" class="hidden mt-2">
+                <input id="guest-login-branch" type="text" value="Cabang Tuban" placeholder="Ketik nama cabang baru (contoh: Semanding)" class="bim-input" />
+              </div>
+            </div>
+            <div>
+              <label class="bim-label" for="guest-login-phone">Nomor WhatsApp / HP <span class="text-slate-400 font-normal">(Opsional — Untuk sinkronisasi pesanan Anda)</span></label>
+              <div class="relative">
+                <i data-lucide="phone" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                <input id="guest-login-phone" type="tel" placeholder="Contoh: 0812-3456-7890" class="bim-input pl-10 font-mono" />
               </div>
             </div>
             <div id="guest-login-error-box" class="hidden p-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300"></div>
-            <button type="submit" class="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-[#14532D] to-[#16A34A] hover:from-[#16A34A] hover:to-[#15803D] text-white font-bold text-sm shadow-lg shadow-emerald-900/20 hover:shadow-emerald-600/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2.5">
-              <span>Masuk ke Menu Order Desain</span>
-              <i data-lucide="arrow-right" class="w-4 h-4 text-[#F4B942]"></i>
-            </button>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <button type="submit" onclick="APP_STATE.guestLoginTargetTab='id_card'" class="py-3 px-4 rounded-2xl bg-gradient-to-r from-[#14532D] to-[#16A34A] hover:from-[#16A34A] hover:to-[#15803D] text-white font-bold text-xs shadow-lg shadow-emerald-900/20 transition-all flex items-center justify-center gap-2">
+                <span>Buat Order Baru</span>
+                <i data-lucide="arrow-right" class="w-4 h-4 text-[#F4B942]"></i>
+              </button>
+              <button type="submit" onclick="APP_STATE.guestLoginTargetTab='queue'" class="py-3 px-4 rounded-2xl bg-[#172554] hover:bg-blue-900 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2">
+                <i data-lucide="layers" class="w-4 h-4 text-[#F4B942]"></i>
+                <span>Cek Pesanan Cabang</span>
+              </button>
+            </div>
           </form>
+
+          <!-- Kotak Lacak Cepat via Nomor WA atau Kode Order (Tanpa Isi Form Lengkap) -->
+          <div class="pt-3 border-t border-slate-200/80 dark:border-slate-800 space-y-2">
+            <div class="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-emerald-600"></i>
+              <span>Sudah Pernah Memesan? Cek Cepat via Nomor WA / ID Order:</span>
+            </div>
+            <div class="flex gap-2">
+              <input id="guest-quick-track-input" type="text" placeholder="Ketik Nomor WA (0817...) atau Kode (BNR-...)" class="bim-input text-xs py-2 font-mono flex-1" />
+              <button type="button" onclick="handleGuestQuickTrackOrder()" class="px-3.5 py-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600 text-emerald-800 dark:text-emerald-300 hover:text-white text-xs font-extrabold shrink-0 transition">
+                Lacak
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- TAB 2: MASUK MENGGUNAKAN EMAIL SEBAGAI USER -->
+        <!-- TAB 2: MASUK MENGGUNAKAN EMAIL (Bisa untuk User Internal maupun Email Khusus Cabang) -->
         <div id="login-panel-user" class="hidden space-y-5">
           <div class="space-y-1">
-            <h2 class="text-base font-extrabold font-display text-slate-900 dark:text-white">Masuk Menggunakan Email User</h2>
+            <h2 class="text-base font-extrabold font-display text-slate-900 dark:text-white">Masuk Menggunakan Email (User / Akun Cabang)</h2>
             <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              Gunakan email akun internal Anda untuk mengakses penuh ruang kerja kreatif.
+              Gunakan <strong>Email Cabang</strong> (contoh: <span class="font-mono text-emerald-700 dark:text-emerald-400">semanding@bim.co.id</span>) untuk melihat pesanan cabang, atau email staf internal.
             </p>
           </div>
 
@@ -771,7 +917,14 @@
           cloudStorageBucketUrl: '/api/media/upload',
           announcement: 'Selamat datang di BIM Creative Hub! Silakan mulai mengisi jadwal konten, laporan analitik, atau pesanan desain tim Anda.',
           platforms: ['Instagram', 'TikTok', 'Facebook', 'YouTube', 'LinkedIn'],
-          branches: ['Pusat Jakarta', 'Cabang Surabaya', 'Cabang Tuban', 'Cabang Bandung'],
+          branches: [
+            'Cabang Tuban', 'Cabang Bangilan', 'Cabang Plumpang', 'Cabang Kerek', 'Cabang Rengel',
+            'Cabang Palang', 'Cabang Merakurak', 'Cabang Jatirogo', 'Cabang Sumberrejo', 'Cabang Babat',
+            'Cabang Brondong', 'Cabang Soko', 'Cabang Jenu', 'Cabang Semanding', 'Cabang Bancar',
+            'Cabang Tambakboyo', 'Cabang Singgahan', 'Cabang Maduran', 'Cabang Sugio', 'Cabang Kedungadem',
+            'Cabang Karanggeneng', 'Cabang Bungah', 'Cabang Dukun', 'Cabang Dander', 'Cabang Kapas',
+            'Cabang Baureno', 'Cabang Paciran', 'Cabang Jombang', 'Cabang Sidayu', 'Cabang Ngimbang'
+          ],
           bannerCategories: [
             'Banner promosi',
             'Banner kegiatan',
@@ -888,7 +1041,7 @@
             id: 'usr_guest_sby',
             email: 'tamu.surabaya@bimcreative.id',
             username: 'tamu.surabaya',
-            passwordHash: 'BimGuest#2026',
+            passwordHash: 'bim123',
             fullName: 'Dewi Lestari (Tamu Surabaya)',
             employeeId: 'CBG-SBY-09',
             jobTitle: 'Koordinator Operasional Cabang Surabaya',
@@ -906,7 +1059,7 @@
             id: 'usr_guest_tbn',
             email: 'tamu.tuban@bimcreative.id',
             username: 'tamu.tuban',
-            passwordHash: 'BimGuest#2026',
+            passwordHash: 'bim123',
             fullName: 'Hendra Kusuma (Tamu Tuban)',
             employeeId: 'CBG-TBN-04',
             jobTitle: 'Kepala Cabang Tuban',
@@ -1045,24 +1198,37 @@
 
     let chartInstances = {};
 
+    const OFFICIAL_BIM_BRANCH_NAMES = [
+      'Tuban', 'Bangilan', 'Plumpang', 'Kerek', 'Rengel',
+      'Palang', 'Merakurak', 'Jatirogo', 'Sumberrejo', 'Babat',
+      'Brondong', 'Soko', 'Jenu', 'Semanding', 'Bancar',
+      'Tambakboyo', 'Singgahan', 'Maduran', 'Sugio', 'Kedungadem',
+      'Karanggeneng', 'Bungah', 'Dukun', 'Dander', 'Kapas',
+      'Baureno', 'Paciran', 'Jombang', 'Sidayu', 'Ngimbang'
+    ];
+    const OFFICIAL_BIM_BRANCHES = OFFICIAL_BIM_BRANCH_NAMES.map(b => `Cabang ${b}`);
+
     function normalizeBranchName(name) {
       const n = String(name || '').trim();
-      if (/^tuban$/i.test(n)) return 'Cabang Tuban';
-      if (/^surabaya$/i.test(n)) return 'Cabang Surabaya';
-      if (/^bandung$/i.test(n)) return 'Cabang Bandung';
-      if (/^jakarta$/i.test(n)) return 'Pusat Jakarta';
+      if (!n) return '';
+      if (/^jakarta$/i.test(n) || /^pusat\s+jakarta$/i.test(n)) return 'Pusat Jakarta';
+      if (/^surabaya$/i.test(n) || /^cabang\s+surabaya$/i.test(n)) return 'Cabang Surabaya';
+      const stripped = n.replace(/^cabang\s+/i, '').trim();
+      const matchedOfficial = OFFICIAL_BIM_BRANCH_NAMES.find(b => b.toLowerCase() === stripped.toLowerCase());
+      if (matchedOfficial) return `Cabang ${matchedOfficial}`;
       return n;
     }
 
     function sanitizeDatabaseBranches(dbObj) {
       if (!dbObj || !dbObj.appSettings) return dbObj;
       const rawBranches = Array.isArray(dbObj.appSettings.branches)
-        ? dbObj.appSettings.branches
-        : ['Pusat Jakarta', 'Cabang Surabaya', 'Cabang Tuban', 'Cabang Bandung'];
+        ? [...OFFICIAL_BIM_BRANCHES, ...dbObj.appSettings.branches]
+        : [...OFFICIAL_BIM_BRANCHES];
       const uniqueBranches = [];
       rawBranches.forEach(b => {
         const clean = normalizeBranchName(b);
-        if (clean && !uniqueBranches.includes(clean)) uniqueBranches.push(clean);
+        if (!clean || clean === 'Cabang Bandung') return;
+        if (!uniqueBranches.includes(clean)) uniqueBranches.push(clean);
       });
       dbObj.appSettings.branches = uniqueBranches;
 
@@ -1444,11 +1610,107 @@
         .trim();
     }
 
+    function normalizePhoneTail(rawPhone) {
+      const digits = String(rawPhone || '').replace(/\D/g, '');
+      return digits.length >= 8 ? digits.slice(-9) : '';
+    }
+
+    function getAllKnownBranches() {
+      const map = new Map();
+      const addBr = (b) => {
+        const clean = String(b || '').trim();
+        if (!clean || clean === '-' || clean.toLowerCase().includes('pusat') || clean.toLowerCase().includes('bandung') || clean.toLowerCase().includes('surabaya')) return;
+        const key = normalizeBranchKey(clean);
+        if (!key) return;
+        if (!map.has(key)) {
+          map.set(key, clean.toLowerCase().startsWith('cabang ') ? clean : `Cabang ${clean}`);
+        }
+      };
+      // Selalu utamakan 30 cabang resmi sesuai urutan daftar BMT BIM
+      OFFICIAL_BIM_BRANCHES.forEach(addBr);
+      if (DB.appSettings && Array.isArray(DB.appSettings.branches)) {
+        DB.appSettings.branches.forEach(addBr);
+      }
+      if (Array.isArray(DB.designOrders)) {
+        DB.designOrders.forEach(o => addBr(o && o.branch));
+      }
+      if (Array.isArray(DB.users)) {
+        DB.users.filter(u => u && u.role === 'GUEST').forEach(u => addBr(u.branch));
+      }
+      return Array.from(map.values());
+    }
+
+    function buildBranchOptionsHtml(selectedBranch) {
+      const branches = getAllKnownBranches();
+      const selKey = normalizeBranchKey(selectedBranch);
+      return branches.map(b =>
+        `<option value="${escapeHtml(b)}" ${normalizeBranchKey(b) === selKey ? 'selected' : ''}>${escapeHtml(b)}</option>`
+      ).join('');
+    }
+
+    function ensureBranchEmailAccountsExist(silent = true) {
+      const branches = getAllKnownBranches();
+      let createdCount = 0;
+      branches.forEach(branchLabel => {
+        const key = normalizeBranchKey(branchLabel);
+        if (!key) return;
+        const slug = key.replace(/\s+/g, '');
+        const existing = DB.users.find(u => u.role === 'GUEST' && normalizeBranchKey(u.branch) === key);
+        if (!existing) {
+          DB.users.push({
+            id: `usr_guest_br_${slug}`,
+            employeeId: `GUEST-${slug.toUpperCase().slice(0, 6)}`,
+            fullName: `Tamu ${branchLabel}`,
+            username: `cabang.${slug}`,
+            email: `${slug}@bim.co.id`,
+            passwordHash: 'bim123',
+            phone: '',
+            role: 'GUEST',
+            subRole: 'Tamu Cabang',
+            jobTitle: 'Perwakilan Cabang',
+            branch: branchLabel,
+            isActive: true,
+            aiQuotaLimit: 0,
+            aiQuotaUsed: 0,
+            themePreference: 'light',
+            lastLoginAt: '-',
+            permissions: {}
+          });
+          createdCount++;
+        } else {
+          if (!existing.email || existing.email === 'tamu@bim.co.id') {
+            existing.email = `${slug}@bim.co.id`;
+            existing.username = `cabang.${slug}`;
+          }
+          if (!existing.passwordHash || existing.passwordHash === 'bim123') {
+            existing.passwordHash = 'bim123';
+          }
+        }
+      });
+      if (createdCount > 0 && !silent) {
+        saveDatabase();
+      }
+      return createdCount;
+    }
+
     function isOrderVisibleToGuest(ord, user) {
       if (!ord || !user) return false;
+      // 1. Jika tamu sedang melacak Kode Order spesifik (mis. BNR-20261031-003)
+      if (APP_STATE.guestTrackedOrderCode) {
+        const trackedCode = String(APP_STATE.guestTrackedOrderCode).trim().toUpperCase();
+        if (trackedCode && String(ord.orderId || '').toUpperCase() === trackedCode) {
+          return true;
+        }
+      }
+      // 2. Pencocokan Nomor WA/HP Pemesan (jika tamu mengisi nomor WA miliknya)
+      const userPhoneTail = normalizePhoneTail(APP_STATE.guestTrackedPhone || user.phone);
+      const ordPhoneTail = normalizePhoneTail(ord.phone || (ord.idCardSpec && ord.idCardSpec.contactPhone));
+      if (userPhoneTail && ordPhoneTail && userPhoneTail === ordPhoneTail) {
+        return true;
+      }
+      // 3. Isolasi penuh antar cabang: Tamu melihat seluruh pesanan dari cabangnya sendiri
       const userBranchKey = normalizeBranchKey(user.branch);
       const ordBranchKey = normalizeBranchKey(ord.branch);
-      // Isolasi penuh antar cabang: Tamu hanya bisa melihat pesanan dari cabangnya sendiri
       if (userBranchKey && ordBranchKey) {
         return userBranchKey === ordBranchKey;
       }
@@ -2336,7 +2598,42 @@
       if (modal) modal.classList.add('hidden');
     }
 
+    function populateGuestBranchDropdown(selectedBranch) {
+      const sel = document.getElementById('guest-login-branch-select');
+      const customWrap = document.getElementById('guest-login-branch-custom-wrap');
+      const customInp = document.getElementById('guest-login-branch');
+      if (!sel) return;
+      const branches = getAllKnownBranches();
+      const target = selectedBranch || (customInp && customInp.value) || branches[0] || 'Cabang Surabaya';
+      sel.innerHTML = branches.map(b =>
+        `<option value="${escapeHtml(b)}" ${normalizeBranchKey(b) === normalizeBranchKey(target) ? 'selected' : ''}>${escapeHtml(b)}</option>`
+      ).join('') + `<option value="__CUSTOM__">+ Ketik Nama Cabang Baru...</option>`;
+      if (customInp && sel.value !== '__CUSTOM__') {
+        customInp.value = sel.value;
+      }
+      if (customWrap) {
+        customWrap.classList.toggle('hidden', sel.value !== '__CUSTOM__');
+      }
+    }
+
+    function handleGuestBranchSelectChange(val) {
+      const customWrap = document.getElementById('guest-login-branch-custom-wrap');
+      const customInp = document.getElementById('guest-login-branch');
+      if (val === '__CUSTOM__') {
+        if (customWrap) customWrap.classList.remove('hidden');
+        if (customInp) {
+          customInp.value = '';
+          customInp.focus();
+        }
+      } else {
+        if (customWrap) customWrap.classList.add('hidden');
+        if (customInp) customInp.value = val;
+      }
+    }
+
     function openLoginModal() {
+      ensureBranchEmailAccountsExist(true);
+      populateGuestBranchDropdown();
       const ls = document.getElementById('login-screen');
       if (ls) ls.classList.remove('hidden');
       switchLoginTab('guest');
@@ -2369,25 +2666,79 @@
       refreshIcons();
     }
 
+    function handleGuestQuickTrackOrder() {
+      const inp = document.getElementById('guest-quick-track-input');
+      const q = (inp ? inp.value : '').trim();
+      if (!q) {
+        showToast('Masukkan Nomor WhatsApp (08...) atau Kode Order (BNR-... / IDC-...) terlebih dahulu.', 'error');
+        return;
+      }
+
+      const allOrders = filterDemoItems(DB.designOrders);
+      const qUpper = q.toUpperCase();
+      const qPhoneTail = normalizePhoneTail(q);
+      const qBranchKey = normalizeBranchKey(q);
+
+      const matchedOrder = allOrders.find(o => {
+        if (String(o.orderId || '').toUpperCase() === qUpper) return true;
+        const ordPhoneTail = normalizePhoneTail(o.phone || (o.idCardSpec && o.idCardSpec.contactPhone));
+        if (qPhoneTail && ordPhoneTail && qPhoneTail === ordPhoneTail) return true;
+        if (qBranchKey && qBranchKey.length >= 3 && normalizeBranchKey(o.branch) === qBranchKey) return true;
+        return false;
+      });
+
+      if (!matchedOrder) {
+        showToast(`Tidak ditemukan pesanan dengan Nomor WA / Kode "${q}". Pastikan nomor atau cabang sesuai.`, 'error');
+        return;
+      }
+
+      // Masuk sebagai Tamu dengan cabang & nomor WA dari pesanan yang ditemukan
+      const nameInp = document.getElementById('guest-login-name');
+      const branchInp = document.getElementById('guest-login-branch');
+      const branchSel = document.getElementById('guest-login-branch-select');
+      const phoneInp = document.getElementById('guest-login-phone');
+
+      if (nameInp) nameInp.value = matchedOrder.requesterName || 'Tamu Cabang';
+      if (branchSel) branchSel.value = '__CUSTOM__';
+      if (branchInp) branchInp.value = matchedOrder.branch || 'Cabang Umum';
+      if (phoneInp) phoneInp.value = matchedOrder.phone || '';
+
+      if (/^(?:IDC|BNR)-/i.test(qUpper)) {
+        APP_STATE.guestTrackedOrderCode = qUpper;
+      } else if (qPhoneTail) {
+        APP_STATE.guestTrackedPhone = q;
+      }
+      APP_STATE.guestLoginTargetTab = 'queue';
+      handleGuestManualLoginSubmit({ preventDefault: () => {} });
+    }
+
     function handleGuestManualLoginSubmit(e) {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       const nameInput = document.getElementById('guest-login-name');
+      const branchSel = document.getElementById('guest-login-branch-select');
       const branchInput = document.getElementById('guest-login-branch');
+      const phoneInput = document.getElementById('guest-login-phone');
+
       const guestName = (nameInput ? nameInput.value : '').trim();
-      const guestBranch = (branchInput ? branchInput.value : '').trim();
+      const rawBranch = (branchSel && branchSel.value && branchSel.value !== '__CUSTOM__')
+        ? branchSel.value
+        : (branchInput ? branchInput.value : '');
+      const guestBranch = rawBranch.trim();
+      const guestPhone = (phoneInput ? phoneInput.value : '').trim();
+      const targetTab = APP_STATE.guestLoginTargetTab || 'id_card';
+      APP_STATE.guestLoginTargetTab = 'id_card';
+
       if (!guestName || !guestBranch) {
-        showToast('Harap isi Nama Lengkap dan Nama Cabang terlebih dahulu.', 'error');
+        showToast('Harap isi Nama Lengkap dan pilih/ketik Nama Cabang terlebih dahulu.', 'error');
         return;
       }
 
       runWithLoading('Menyiapkan Menu Order Desain...', `Selamat datang, ${guestName} (${guestBranch})`, () => {
-        // Buat atau gunakan akun Tamu khusus untuk cabang ini agar data antar cabang terisolasi penuh
-        const branchSlug = normalizeBranchKey(guestBranch).replace(/\s+/g, '_') || 'manual';
+        const branchSlug = normalizeBranchKey(guestBranch).replace(/\s+/g, '') || 'manual';
         const targetGuestId = branchSlug === 'surabaya'
           ? 'usr_guest_sby'
           : (branchSlug === 'tuban' ? 'usr_guest_tbn' : `usr_guest_br_${branchSlug}`);
 
-        // Pastikan usr_guest_sby tetap berstatus Cabang Surabaya jika sebelumnya pernah tertimpa cabang lain
         const defaultSbyGuest = DB.users.find(u => u.id === 'usr_guest_sby');
         if (defaultSbyGuest && branchSlug !== 'surabaya' && normalizeBranchKey(defaultSbyGuest.branch) !== 'surabaya') {
           defaultSbyGuest.branch = 'Cabang Surabaya';
@@ -2398,11 +2749,12 @@
         if (!guestUser) {
           guestUser = {
             id: targetGuestId,
+            employeeId: `GUEST-${branchSlug.toUpperCase().slice(0, 6)}`,
             fullName: guestName,
-            username: `tamu.${branchSlug}`,
-            email: `tamu.${branchSlug}@bim.co.id`,
-            passwordHash: 'BimGuest#2026',
-            phone: '',
+            username: `cabang.${branchSlug}`,
+            email: `${branchSlug}@bim.co.id`,
+            passwordHash: 'bim123',
+            phone: guestPhone,
             role: 'GUEST',
             subRole: 'Tamu Cabang',
             jobTitle: 'Perwakilan Cabang',
@@ -2418,30 +2770,47 @@
         } else {
           guestUser.fullName = guestName;
           guestUser.branch = guestBranch;
+          if (guestPhone) guestUser.phone = guestPhone;
+          if (!guestUser.email || guestUser.email === 'tamu@bim.co.id') {
+            guestUser.email = `${branchSlug}@bim.co.id`;
+            guestUser.username = `cabang.${branchSlug}`;
+          }
           guestUser.isActive = true;
           guestUser.lastLoginAt = getNowWIB();
         }
 
-        // Also add manual branch to DB.appSettings.branches if not present yet
-        if (DB.appSettings && Array.isArray(DB.appSettings.branches) && !DB.appSettings.branches.includes(guestBranch)) {
-          DB.appSettings.branches.push(guestBranch);
+        if (guestPhone) {
+          APP_STATE.guestTrackedPhone = guestPhone;
+        }
+
+        if (DB.appSettings && Array.isArray(DB.appSettings.branches)) {
+          const existsBr = DB.appSettings.branches.some(b => normalizeBranchKey(b) === normalizeBranchKey(guestBranch));
+          if (!existsBr) {
+            DB.appSettings.branches.push(guestBranch.toLowerCase().startsWith('cabang ') ? guestBranch : `Cabang ${guestBranch}`);
+          }
         }
 
         APP_STATE.currentUserId = guestUser.id;
         APP_STATE.activeModule = 'design_order';
-        APP_STATE.ordActiveTab = 'id_card';
+        APP_STATE.ordActiveTab = targetTab;
         saveDatabase();
-        logAudit('Autentikasi', 'GUEST_LOGIN', guestUser.id, `Tamu masuk manual: ${guestName} — Cabang: ${guestBranch}, dialihkan ke Order Desain`);
+        logAudit('Autentikasi', 'GUEST_LOGIN', guestUser.id, `Tamu masuk: ${guestName} — Cabang: ${guestBranch}, tab: ${targetTab}`);
         applyThemeMode(guestUser.themePreference || 'light');
         closeLoginModalIfAuthenticated();
         refreshAppIdentity();
         navigateToModule('design_order');
-        showToast(`Selamat datang ${guestName} (${guestBranch})! Silakan pilih Order ID Card atau Order Banner.`, 'success');
+        const myCnt = getAuthorizedDesignOrders().length;
+        if (targetTab === 'queue') {
+          showToast(`Menampilkan ${myCnt} pesanan untuk ${guestBranch}.`, 'success');
+        } else {
+          showToast(`Selamat datang ${guestName} (${guestBranch})! (${myCnt} riwayat pesanan tersimpan di tab Pesanan Saya).`, 'success');
+        }
       }, 320);
     }
 
     function handleLoginSubmit(e) {
       e.preventDefault();
+      ensureBranchEmailAccountsExist(true);
       const emailVal = (document.getElementById('login-email').value || '').trim().toLowerCase();
       const passVal = (document.getElementById('login-password').value || '').trim();
       const errBox = document.getElementById('login-error-box');
@@ -9331,6 +9700,309 @@
     // =========================================================================
     // 13. MODULE H: ANTREAN DESAIN & PEMESANAN DESAIN (ID CARD & BANNER)
     // =========================================================================
+    let _orderAnimTimer = null;
+
+    function buildOrderCardAnimatedStatusHtml(o) {
+      if (!o) return '';
+      if (o.status === 'Selesai') {
+        return `
+          <div onclick="showOrderStatusAnimation('completed', '${o.id}')" title="Klik untuk memutar animasi selesai"
+            class="cursor-pointer group p-3 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-amber-500/15 border border-emerald-500/35 hover:border-emerald-500/60 transition space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="relative w-8 h-8 rounded-xl bg-[#16A34A] text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <span class="absolute inset-0 rounded-xl bg-emerald-400 bim-anim-sonar"></span>
+                  <i data-lucide="party-popper" class="w-4 h-4 relative z-10"></i>
+                </div>
+                <div class="min-w-0">
+                  <div class="text-[11px] font-extrabold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                    <span>Orderan Anda telah selesai! 🎉</span>
+                  </div>
+                  <div class="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 truncate">
+                    Diselesaikan oleh <strong>${escapeHtml(o.completedByName || 'Tim Desain')}</strong> • ${escapeHtml(o.completedAt || '-')}
+                  </div>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 rounded-lg bg-white/80 dark:bg-slate-900/80 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0 group-hover:scale-105 transition">
+                ✨ Animasi
+              </span>
+            </div>
+            <div class="w-full h-1.5 rounded-full bg-emerald-950/10 dark:bg-slate-800 overflow-hidden">
+              <div class="h-full w-full rounded-full bg-gradient-to-r from-[#14532D] via-[#16A34A] to-[#F4B942]"></div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (o.status === 'Dikerjakan') {
+        return `
+          <div onclick="showOrderStatusAnimation('working', '${o.id}')" title="Klik untuk melihat animasi status pengerjaan"
+            class="cursor-pointer group p-3 rounded-2xl bg-blue-500/10 border border-blue-500/30 hover:border-blue-500/50 transition space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="relative w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                  <span class="absolute inset-0 rounded-xl bg-blue-400 bim-anim-sonar"></span>
+                  <i data-lucide="sparkles" class="w-4 h-4 relative z-10 bim-anim-float"></i>
+                </div>
+                <div class="min-w-0">
+                  <div class="text-[11px] font-extrabold text-blue-800 dark:text-blue-300">
+                    Orderan sedang dikerjakan, silakan ditunggu <span class="bim-dot-1">•</span><span class="bim-dot-2">•</span><span class="bim-dot-3">•</span>
+                  </div>
+                  <div class="text-[10px] text-blue-700/80 dark:text-blue-300/80 truncate">
+                    Tim Desain sedang memproses desain pesanan Anda
+                  </div>
+                </div>
+              </div>
+              <span class="text-[10px] font-extrabold text-blue-700 dark:text-blue-300 shrink-0">70%</span>
+            </div>
+            <div class="w-full h-1.5 rounded-full bg-blue-950/10 dark:bg-slate-800 overflow-hidden">
+              <div class="h-full w-[70%] rounded-full bg-blue-600 bim-progress-Wait"></div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Default: Menunggu
+      return `
+        <div onclick="showOrderStatusAnimation('submitted', '${o.id}')" title="Klik untuk melihat animasi status pesanan"
+          class="cursor-pointer group p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/55 transition space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="relative w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                <span class="absolute inset-0 rounded-xl bg-amber-400 bim-anim-sonar"></span>
+                <i data-lucide="clock" class="w-4 h-4 relative z-10 bim-anim-float"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="text-[11px] font-extrabold text-amber-900 dark:text-[#F4B942]">
+                  Orderan Anda telah masuk, silakan ditunggu <span class="bim-dot-1">•</span><span class="bim-dot-2">•</span><span class="bim-dot-3">•</span>
+                </div>
+                <div class="text-[10px] text-amber-800/80 dark:text-amber-300/80 truncate">
+                  Pesanan sudah masuk antrean dan segera dikerjakan Tim Desain
+                </div>
+              </div>
+            </div>
+            <span class="text-[10px] font-extrabold text-amber-700 dark:text-[#F4B942] shrink-0">Antrean</span>
+          </div>
+          <div class="w-full h-1.5 rounded-full bg-amber-950/10 dark:bg-slate-800 overflow-hidden">
+            <div class="h-full w-[38%] rounded-full bg-amber-500 bim-progress-Wait"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function closeOrderStatusAnimation() {
+      if (_orderAnimTimer) {
+        clearTimeout(_orderAnimTimer);
+        _orderAnimTimer = null;
+      }
+      const overlay = document.getElementById('bim-order-anim-overlay');
+      if (overlay) overlay.classList.add('hidden');
+    }
+
+    function showOrderStatusAnimation(mode, orderIdOrObj) {
+      const overlay = document.getElementById('bim-order-anim-overlay');
+      const content = document.getElementById('bim-order-anim-content');
+      if (!overlay || !content) return;
+
+      const ord = typeof orderIdOrObj === 'string'
+        ? DB.designOrders.find(o => o.id === orderIdOrObj || o.orderId === orderIdOrObj)
+        : orderIdOrObj;
+
+      const isIdCard = ord ? ord.orderType === 'ID_CARD' : false;
+      const orderCode = ord ? ord.orderId : 'ORD-BIM';
+      const personName = ord ? (isIdCard && ord.idCardSpec ? ord.idCardSpec.fullName : ord.requesterName) : 'Pemesan';
+      const branchName = ord ? ord.branch : '';
+      const shortDesc = ord ? ord.shortDescription : '';
+      const finalImg = ord && ord.finalFileUrl ? ord.finalFileUrl : '';
+
+      let confettiHtml = '';
+      if (mode === 'completed') {
+        const colors = ['#16A34A', '#F4B942', '#3B82F6', '#EC4899', '#10B981', '#F59E0B'];
+        confettiHtml = Array.from({ length: 28 }).map((_, i) => {
+          const left = Math.round((i / 28) * 96) + 2;
+          const delay = (i % 7) * 0.12;
+          const dur = 1.9 + (i % 5) * 0.25;
+          const col = colors[i % colors.length];
+          return `<span class="bim-confetti-piece" style="left:${left}%; background:${col}; animation-delay:${delay}s; animation-duration:${dur}s;"></span>`;
+        }).join('');
+      }
+
+      const isCompleted = mode === 'completed';
+      const isWorking = mode === 'working';
+
+      const badgeColor = isCompleted
+        ? 'from-[#14532D] to-[#16A34A] text-white'
+        : isWorking
+          ? 'from-blue-600 to-cyan-500 text-white'
+          : 'from-amber-400 to-[#F4B942] text-slate-950';
+
+      const sonarColor = isCompleted
+        ? 'bg-emerald-500/35'
+        : isWorking
+          ? 'bg-blue-500/35'
+          : 'bg-amber-400/40';
+
+      const titleText = isCompleted
+        ? 'Orderan Anda Telah Selesai! 🎉'
+        : isWorking
+          ? 'Orderan Sedang Dikerjakan! 🎨'
+          : 'Orderan Anda Telah Masuk! 🚀';
+
+      const subtitleText = isCompleted
+        ? 'Terima kasih telah menunggu! Desain pesanan Anda sudah selesai dikerjakan dan siap digunakan.'
+        : isWorking
+          ? 'Silakan ditunggu ya, Tim Desain BIM Creative saat ini sedang mengerjakan pesanan desain Anda.'
+          : 'Silakan ditunggu ya! Pesanan Anda telah masuk ke dalam antrean dan segera dikerjakan oleh Tim Desain.';
+
+      const centerIconHtml = isCompleted
+        ? `
+          <svg class="w-11 h-11 text-white bim-check-svg relative z-10" viewBox="0 0 52 52" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 27l8 8 16-16" />
+          </svg>
+        `
+        : isWorking
+          ? `<i data-lucide="palette" class="w-10 h-10 relative z-10 bim-anim-float"></i>`
+          : `<i data-lucide="send" class="w-10 h-10 relative z-10 bim-anim-float"></i>`;
+
+      // Retrigger pop animation
+      content.classList.remove('bim-anim-card-pop');
+      void content.offsetWidth;
+      content.classList.add('bim-anim-card-pop');
+
+      content.innerHTML = `
+        ${confettiHtml}
+        <button type="button" onclick="closeOrderStatusAnimation()" class="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+
+        <div class="space-y-5 relative z-10">
+          <!-- Animated Sonar Icon Circle -->
+          <div class="relative w-20 h-20 mx-auto flex items-center justify-center">
+            <span class="absolute inset-0 rounded-3xl ${sonarColor} bim-anim-sonar"></span>
+            <span class="absolute inset-0 rounded-3xl ${sonarColor} bim-anim-sonar-delay"></span>
+            <div class="w-20 h-20 rounded-3xl bg-gradient-to-br ${badgeColor} shadow-xl flex items-center justify-center relative z-10">
+              ${centerIconHtml}
+            </div>
+          </div>
+
+          <!-- Title & Subtitle -->
+          <div class="space-y-1.5">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider ${
+              isCompleted
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                : isWorking
+                  ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                  : 'bg-amber-500/20 text-amber-800 dark:text-[#F4B942]'
+            }">
+              ${isCompleted ? '✨ Status: Selesai Dikerjakan' : isWorking ? '🎨 Status: Sedang Dikerjakan' : '⏳ Status: Menunggu Antrean'}
+            </span>
+            <h3 class="text-xl sm:text-2xl font-extrabold font-display text-slate-900 dark:text-white tracking-tight">
+              ${titleText}
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-sm mx-auto">
+              ${subtitleText}
+            </p>
+          </div>
+
+          <!-- 3-Step Visual Progress Tracker -->
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
+            <div class="grid grid-cols-3 gap-2 text-[10px] font-bold">
+              <div class="flex flex-col items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                <span class="w-6 h-6 rounded-full bg-[#16A34A] text-white flex items-center justify-center text-[11px] shadow-2xs">✓</span>
+                <span>1. Order Masuk</span>
+              </div>
+              <div class="flex flex-col items-center gap-1 ${isWorking || isCompleted ? 'text-blue-700 dark:text-blue-400' : 'text-slate-400'}">
+                <span class="w-6 h-6 rounded-full ${isCompleted ? 'bg-[#16A34A] text-white' : isWorking ? 'bg-blue-600 text-white animate-pulse' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'} flex items-center justify-center text-[11px]">
+                  ${isCompleted ? '✓' : '2'}
+                </span>
+                <span>2. Dikerjakan</span>
+              </div>
+              <div class="flex flex-col items-center gap-1 ${isCompleted ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400'}">
+                <span class="w-6 h-6 rounded-full ${isCompleted ? 'bg-[#16A34A] text-white shadow-sm' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'} flex items-center justify-center text-[11px]">
+                  ${isCompleted ? '✓' : '3'}
+                </span>
+                <span>3. Selesai</span>
+              </div>
+            </div>
+            <div class="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-500 ${
+                isCompleted
+                  ? 'w-full bg-gradient-to-r from-[#14532D] via-[#16A34A] to-[#F4B942]'
+                  : isWorking
+                    ? 'w-[68%] bg-blue-600 bim-progress-Wait'
+                    : 'w-[36%] bg-amber-500 bim-progress-Wait'
+              }"></div>
+            </div>
+          </div>
+
+          <!-- Order Summary Card -->
+          ${ord ? `
+            <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 text-left text-xs space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="font-mono font-extrabold text-emerald-700 dark:text-emerald-400">${escapeHtml(orderCode)}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">${isIdCard ? 'ID Card' : 'Banner Cetak'}</span>
+              </div>
+              <div class="font-bold text-slate-900 dark:text-white">${escapeHtml(personName)} ${branchName ? `<span class="font-normal text-slate-500">• ${escapeHtml(branchName)}</span>` : ''}</div>
+              ${shortDesc ? `<div class="text-[11px] text-slate-500 truncate">${escapeHtml(shortDesc)}</div>` : ''}
+              ${isCompleted && finalImg ? `
+                <div class="pt-2">
+                  <img src="${finalImg}" alt="Hasil Desain" class="max-h-28 mx-auto rounded-xl border border-emerald-500/30 object-contain bg-slate-950 p-1" />
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          <!-- Action Buttons -->
+          <div class="flex items-center justify-center gap-2.5 pt-1">
+            ${isCompleted && ord ? `
+              <button type="button" onclick="closeOrderStatusAnimation(); openOrderDetailModal('${ord.id}');" class="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-[#14532D] to-[#16A34A] hover:from-[#16A34A] hover:to-[#15803D] text-white font-bold text-xs shadow-lg shadow-emerald-900/20 transition flex items-center justify-center gap-2">
+                <i data-lucide="eye" class="w-4 h-4 text-[#F4B942]"></i>
+                <span>Lihat Hasil Desain</span>
+              </button>
+            ` : ''}
+            <button type="button" onclick="closeOrderStatusAnimation()" class="${isCompleted && ord ? 'px-4' : 'w-full px-5'} py-3 rounded-2xl ${
+              isCompleted && ord
+                ? 'border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                : 'bg-gradient-to-r from-[#14532D] to-[#16A34A] text-white shadow-lg shadow-emerald-900/20'
+            } font-bold text-xs transition">
+              ${isCompleted ? 'Tutup' : 'Mengerti, Silakan Ditunggu 👍'}
+            </button>
+          </div>
+        </div>
+      `;
+
+      overlay.classList.remove('hidden');
+      refreshIcons();
+
+      if (_orderAnimTimer) clearTimeout(_orderAnimTimer);
+      _orderAnimTimer = setTimeout(() => {
+        closeOrderStatusAnimation();
+      }, 7500);
+    }
+
+    function checkAndPlayGuestOrderAnimations() {
+      const user = getCurrentUser();
+      if (!user || user.role !== 'GUEST') return;
+      const myOrders = getAuthorizedDesignOrders();
+      if (!myOrders || myOrders.length === 0) return;
+
+      let seenMap = {};
+      try {
+        seenMap = JSON.parse(localStorage.getItem('bim_guest_seen_completed_v1') || '{}');
+      } catch (e) {}
+
+      const newlyCompleted = myOrders.find(o => o.status === 'Selesai' && !seenMap[o.id]);
+      if (newlyCompleted) {
+        seenMap[newlyCompleted.id] = true;
+        try {
+          localStorage.setItem('bim_guest_seen_completed_v1', JSON.stringify(seenMap));
+        } catch (e) {}
+        setTimeout(() => {
+          showOrderStatusAnimation('completed', newlyCompleted);
+        }, 280);
+      }
+    }
+
     function renderDesignOrder() {
       const container = document.getElementById('view-design_order');
       if (!container) return;
@@ -9496,6 +10168,7 @@
         <div>${subHtml}</div>
       `;
       refreshIcons();
+      checkAndPlayGuestOrderAnimations();
     }
 
     function setDesignOrderTab(tabId) {
@@ -9826,16 +10499,8 @@
                       </div>
                     </div>
 
-                    <!-- Completion Metadata Banner (When Status === 'Selesai') -->
-                    ${o.status === 'Selesai' ? `
-                      <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2 text-[11px] text-emerald-800 dark:text-emerald-300">
-                        <i data-lucide="check-check" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-                        <div class="leading-tight">
-                          <strong>Desain Sudah Terkirim</strong><br/>
-                          <span>Diselesaikan oleh <strong>${escapeHtml(o.completedByName || 'Tim Desain')}</strong> • ${escapeHtml(o.completedAt || '-')}</span>
-                        </div>
-                      </div>
-                    ` : ''}
+                    <!-- Live Animated Order Status Banner (Masuk / Dikerjakan / Selesai) -->
+                    ${buildOrderCardAnimatedStatusHtml(o)}
                   </div>
 
                   <!-- Card Footer: Production Actions & "Desain sudah terkirim" Checkbox/Button -->
@@ -9891,10 +10556,30 @@
           <div class="bim-card p-4 space-y-3.5">
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               ${isGuest ? `
-                <!-- Ringkasan untuk Tamu Cabang -->
-                <div class="space-y-0.5">
-                  <div class="text-sm font-bold text-slate-900 dark:text-white">Pesanan Desain Saya (${orders.length})</div>
-                  <div class="text-[11px] text-slate-500">${totalUnfinished} sedang diproses • ${totalDone} selesai • Cabang ${escapeHtml(user.branch || '-')}</div>
+                <!-- Ringkasan & Lacak Cepat untuk Tamu Cabang -->
+                <div class="space-y-2 flex-1">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div class="text-sm font-bold text-slate-900 dark:text-white">Pesanan Desain Saya (${orders.length})</div>
+                      <div class="text-[11px] text-slate-500">${totalUnfinished} sedang diproses • ${totalDone} selesai • Cabang <strong>${escapeHtml(user.branch || '-')}</strong> ${user.email ? `• Login Email: <span class="font-mono text-emerald-700 dark:text-emerald-400">${escapeHtml(user.email)}</span>` : ''}</div>
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2 pt-1">
+                    <div class="relative flex-1 min-w-[220px] max-w-sm">
+                      <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                      <input type="text" id="guest-inline-track-inp" value="${escapeHtml(APP_STATE.guestTrackedPhone || APP_STATE.guestTrackedOrderCode || '')}"
+                        placeholder="Cek pesanan dgn Nomor WA (0817...) atau Kode (BNR-...)"
+                        class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono" />
+                    </div>
+                    <button type="button" onclick="applyGuestInlineTracker()" class="px-3 py-1.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold transition">
+                      Cek Pesanan
+                    </button>
+                    ${(APP_STATE.guestTrackedPhone || APP_STATE.guestTrackedOrderCode) ? `
+                      <button type="button" onclick="resetGuestInlineTracker()" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+                        Reset
+                      </button>
+                    ` : ''}
+                  </div>
                 </div>
               ` : `
               <!-- Status Tabs -->
@@ -9976,6 +10661,7 @@
       logAudit('Antrean Desain', 'START_WORKING', ord.orderId, `${user.fullName} mulai mengerjakan pesanan desain ${ord.orderId}`);
       saveDatabase();
       renderDesignOrder();
+      showOrderStatusAnimation('working', ord);
       showToast(`Status pesanan ${ord.orderId} diubah menjadi Dikerjakan.`, 'info');
       return true;
     }
@@ -10403,6 +11089,7 @@
         saveDatabase();
         closeUniversalModal();
         renderDesignOrder();
+        showOrderStatusAnimation('completed', ord);
         showToast(`Pesanan ${ord.orderId} ditandai Selesai dan dipindahkan ke daftar Selesai.`, 'success');
         return true;
       } catch (err) {
@@ -10484,17 +11171,15 @@
                     <p id="err-idc-job" class="hidden text-[11px] text-red-600 font-medium mt-1">Jabatan wajib diisi.</p>
                   </div>
 
-                  <!-- 4. Cabang (Input Manual) -->
+                  <!-- 4. Cabang (Pilihan Cabang Resmi) -->
                   <div>
                     <label for="idc-branch" class="bim-label">
-                      4. Cabang (Ketik Manual) <span class="text-red-500">*</span>
+                      4. Pilih Cabang <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="idc-branch" required
-                      value="${escapeHtml(user.branch || '')}"
-                      placeholder="Ketik nama cabang (contoh: Cabang Surabaya)"
-                      oninput="updateIdCardLivePreview()"
-                      class="bim-input" />
-                    <p id="err-idc-branch" class="hidden text-[11px] text-red-600 font-medium mt-1">Silakan isi nama cabang penempatan.</p>
+                    <select id="idc-branch" required onchange="updateIdCardLivePreview()" class="bim-input">
+                      ${buildBranchOptionsHtml(user.branch || 'Cabang Tuban')}
+                    </select>
+                    <p id="err-idc-branch" class="hidden text-[11px] text-red-600 font-medium mt-1">Silakan pilih nama cabang penempatan.</p>
                   </div>
                 </div>
               </div>
@@ -10802,6 +11487,7 @@
       APP_STATE.ordFilterStatus = 'UNFINISHED';
 
       renderDesignOrder();
+      showOrderStatusAnimation('submitted', newOrder);
       showToast(`Pesanan berhasil dikirim! Nomor Order Anda: ${autoOrderId}`, 'success');
       return true;
     }
@@ -10841,8 +11527,10 @@
                     <input type="tel" id="bnr-phone" required value="${escapeHtml(user.phone || '0812-3456-7890')}" placeholder="Contoh: 0812-3456-7890" class="bim-input" />
                   </div>
                   <div>
-                    <label class="bim-label">Cabang (Ketik Manual) <span class="text-red-500">*</span></label>
-                    <input type="text" id="bnr-branch" required value="${escapeHtml(user.branch || '')}" oninput="updateBannerLivePreview()" placeholder="Ketik nama cabang..." class="bim-input" />
+                    <label class="bim-label">Pilih Cabang <span class="text-red-500">*</span></label>
+                    <select id="bnr-branch" required onchange="updateBannerLivePreview()" class="bim-input">
+                      ${buildBranchOptionsHtml(user.branch || 'Cabang Tuban')}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -11149,6 +11837,7 @@
       APP_STATE.ordFilterStatus = 'UNFINISHED';
       APP_STATE.ordSelectedOrderId = newOrder.id;
       renderDesignOrder();
+      showOrderStatusAnimation('submitted', newOrder);
       showToast(`Pesanan Banner ${autoOrderId} berhasil ditambahkan ke Antrean Desain!`, 'success');
     }
 
@@ -11471,8 +12160,10 @@
                 </div>
               ` : ''}
               <div class="${user.role === 'GUEST' ? 'sm:col-span-2' : ''}">
-                <label class="bim-label">Cabang <span class="text-red-500">*</span></label>
-                <input type="text" id="edit-idc-branch" required value="${escapeHtml(branch)}" class="bim-input" />
+                <label class="bim-label">Pilih Cabang <span class="text-red-500">*</span></label>
+                <select id="edit-idc-branch" required class="bim-input">
+                  ${buildBranchOptionsHtml(branch)}
+                </select>
               </div>
             </div>
 
@@ -11541,8 +12232,10 @@
                 <input type="tel" id="edit-bnr-phone" required value="${escapeHtml(phone)}" class="bim-input font-mono" />
               </div>
               <div>
-                <label class="bim-label">Cabang <span class="text-red-500">*</span></label>
-                <input type="text" id="edit-bnr-branch" required value="${escapeHtml(branch)}" class="bim-input" />
+                <label class="bim-label">Pilih Cabang <span class="text-red-500">*</span></label>
+                <select id="edit-bnr-branch" required class="bim-input">
+                  ${buildBranchOptionsHtml(branch)}
+                </select>
               </div>
             </div>
 
@@ -12541,6 +13234,7 @@
         <div>${subHtml}</div>
       `;
       refreshIcons();
+      checkAndPlayGuestOrderAnimations();
     }
 
     function setMasterTab(tabId) {
@@ -12705,15 +13399,115 @@
     }
 
     // L.2 USER & GUEST ACCOUNT MANAGEMENT
+    function applyGuestInlineTracker() {
+      const inp = document.getElementById('guest-inline-track-inp');
+      const val = (inp ? inp.value : '').trim();
+      if (!val) {
+        APP_STATE.guestTrackedPhone = '';
+        APP_STATE.guestTrackedOrderCode = '';
+        renderDesignOrder();
+        return;
+      }
+      if (/^(?:IDC|BNR)-/i.test(val)) {
+        APP_STATE.guestTrackedOrderCode = val.toUpperCase();
+        APP_STATE.guestTrackedPhone = '';
+      } else {
+        APP_STATE.guestTrackedPhone = val;
+        APP_STATE.guestTrackedOrderCode = '';
+      }
+      renderDesignOrder();
+      const cnt = getAuthorizedDesignOrders().length;
+      showToast(`Menampilkan ${cnt} pesanan yang cocok dengan "${val}".`, cnt > 0 ? 'success' : 'info');
+    }
+
+    function resetGuestInlineTracker() {
+      APP_STATE.guestTrackedPhone = '';
+      APP_STATE.guestTrackedOrderCode = '';
+      renderDesignOrder();
+    }
+
+    function openBranchEmailAccountsModal() {
+      ensureBranchEmailAccountsExist(false);
+      const guestAccounts = DB.users.filter(u => u.role === 'GUEST');
+      const rowsHtml = guestAccounts.map(u => `
+        <tr class="border-b border-slate-200/70 dark:border-slate-800">
+          <td class="py-2.5 px-3 font-bold text-slate-900 dark:text-white">${escapeHtml(u.branch)}</td>
+          <td class="py-2.5 px-3 font-mono text-emerald-700 dark:text-emerald-400 font-bold">${escapeHtml(u.email)}</td>
+          <td class="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300">${escapeHtml(u.passwordHash || 'bim123')}</td>
+          <td class="py-2.5 px-3 text-right">
+            <button type="button" onclick="openEditUserCredentialsModal('${u.id}')" class="px-2.5 py-1 rounded-lg bg-[#14532D] text-white text-[11px] font-bold">
+              Ubah Sandi
+            </button>
+          </td>
+        </tr>
+      `).join('');
+
+      const bodyHtml = `
+        <div class="space-y-4 text-xs">
+          <div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3">
+            <div class="space-y-0.5">
+              <div class="font-bold text-slate-900 dark:text-white">Daftar Email &amp; Kata Sandi Login Khusus per Cabang (${guestAccounts.length} Cabang)</div>
+              <div class="text-[11px] text-slate-500">Bagikan Email &amp; Sandi ini ke masing-masing cabang agar mereka bisa login di tab <strong>Masuk dengan Email</strong> untuk mengecek ulang semua pesanan cabangnya.</div>
+            </div>
+            <button type="button" onclick="copyAllBranchCredentialsText()" class="px-3.5 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white font-bold flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="copy" class="w-3.5 h-3.5 text-[#F4B942]"></i>
+              <span>Salin Daftar untuk WA Cabang</span>
+            </button>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-100 dark:bg-slate-900 text-[11px] text-slate-500 uppercase">
+                  <th class="py-2.5 px-3">Nama Cabang</th>
+                  <th class="py-2.5 px-3">Email Login Cabang</th>
+                  <th class="py-2.5 px-3">Kata Sandi</th>
+                  <th class="py-2.5 px-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      openUniversalModal('Email & Kata Sandi Login per Cabang (Tamu)', bodyHtml);
+    }
+
+    function copyAllBranchCredentialsText() {
+      ensureBranchEmailAccountsExist(false);
+      const guestAccounts = DB.users.filter(u => u.role === 'GUEST');
+      const lines = [
+        '*AKSES LOGIN CEK PESANAN DESAIN PER CABANG — BIM CREATIVE HUB*',
+        'Silakan pilih tab *"Masuk dengan Email"* atau pilih Cabang Anda:',
+        ''
+      ];
+      guestAccounts.forEach(u => {
+        lines.push(`• *${u.branch}* -> Email: ${u.email} | Sandi: ${u.passwordHash || 'bim123'}`);
+      });
+      const text = lines.join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('Daftar Email & Sandi Cabang berhasil disalin! Siap ditempel ke grup WA.', 'success');
+        });
+      }
+    }
+
     function buildMasterUsersHtml() {
+      ensureBranchEmailAccountsExist(true);
       return `
         <div class="space-y-5 text-xs">
           <div class="bim-card p-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-bold text-slate-900 dark:text-white">Manajemen Seluruh Akun User Internal &amp; Tamu Cabang (${DB.users.length})</h3>
-              <p class="text-slate-500">Buat akun baru, ubah kuota AI, nonaktifkan sementara, atau aktifkan kembali akun.</p>
+              <p class="text-slate-500">Buat akun baru, kelola Email Login per Cabang, ubah kuota AI, atau atur status akun.</p>
             </div>
             <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="openBranchEmailAccountsModal()" class="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-900 dark:text-[#F4B942] hover:text-slate-950 font-extrabold flex items-center gap-1.5 border border-amber-500/30 transition">
+                <i data-lucide="key" class="w-4 h-4"></i>
+                <span>Email Login per Cabang</span>
+              </button>
               <button type="button" onclick="openSpreadsheetImportModal('users')" class="px-3.5 py-2 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1.5">
                 <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
                 <span>Import Akun dari Spreadsheet</span>
@@ -13671,7 +14465,7 @@
         headers: ['Nama Lengkap', 'Email', 'Password', 'Role', 'Jabatan', 'NIP', 'Nomor Telepon', 'Cabang', 'Kuota Kredit AI'],
         sampleRows: [
           ['Siti Aminah', 'siti.aminah@bimcreative.id', 'BimUser#2026', 'USER', 'Content Creator', 'BIM-205', '081298765432', 'Cabang Surabaya', '300'],
-          ['Bagus Setiawan (Tamu Bandung)', 'tamu.bandung@bimcreative.id', 'BimGuest#2026', 'GUEST', 'Koordinator Cabang Bandung', 'CBG-BDG-02', '081322334455', 'Cabang Bandung', '0']
+          ['Bagus Setiawan (Tamu Bandung)', 'tamu.bandung@bimcreative.id', 'bim123', 'GUEST', 'Koordinator Cabang Bandung', 'CBG-BDG-02', '081322334455', 'Cabang Bandung', '0']
         ]
       }
     };
@@ -14486,13 +15280,18 @@
     });
 
     window.addEventListener('DOMContentLoaded', function() {
+      ensureBranchEmailAccountsExist(true);
+      populateGuestBranchDropdown();
       const user = getCurrentUser();
       applyThemeMode(user.themePreference || 'light');
       refreshAppIdentity();
       runWithLoading('Menyiapkan Ruang Kerja', 'Memuat modul dan data BIM Creative Hub...', function() {
         navigateToModule(user.role === 'GUEST' ? 'design_order' : 'dashboard');
         if (isGasCloudConfigured()) {
-          pullDatabaseFromGasCloud(true);
+          pullDatabaseFromGasCloud(true).then(() => {
+            ensureBranchEmailAccountsExist(true);
+            populateGuestBranchDropdown();
+          });
         }
       }, 320);
     });
