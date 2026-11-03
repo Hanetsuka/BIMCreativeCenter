@@ -559,6 +559,8 @@
       cursor: pointer;
     }
     html body #login-screen .bim-lg-field.bim-lg-pass { padding-right: 46px !important; }
+    html body #login-screen select.bim-lg-field:invalid { color: #94A3B8 !important; font-weight: 500 !important; }
+    #login-screen select.bim-lg-field option { color: var(--lg-ink); font-weight: 600; }
 
     .bim-lg-eye {
       position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
@@ -890,7 +892,8 @@
                 <div class="bim-lg-wrap">
                   <i data-lucide="map-pin" class="bim-lg-ico"></i>
                   <select id="guest-login-branch-select" required class="bim-lg-field" onchange="handleGuestBranchSelectChange(this.value)">
-                    <option value="Cabang Jatirogo" selected>Cabang Jatirogo</option>
+                    <option value="" disabled selected>Pilih cabang Anda</option>
+                    <option value="Cabang Jatirogo">Cabang Jatirogo</option>
                     <option value="Cabang Bojonegoro">Cabang Bojonegoro</option>
                     <option value="Cabang Tuban">Cabang Tuban</option>
                     <option value="Cabang Lamongan">Cabang Lamongan</option>
@@ -3209,9 +3212,9 @@
       const currentUser = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;
       const userBranch = (currentUser && currentUser.role === 'GUEST' && currentUser.branch) ? currentUser.branch : '';
       const currentSelVal = (sel.value && sel.value !== '__CUSTOM__' && sel.value !== 'Cabang Tuban') ? sel.value : '';
-      const target = selectedBranch || currentSelVal || userBranch || (customInp && customInp.value) || branches[0] || 'Cabang Tuban';
-      sel.innerHTML = branches.map(b =>
-        `<option value="${escapeHtml(b)}" ${normalizeBranchKey(b) === normalizeBranchKey(target) ? 'selected' : ''}>${escapeHtml(b)}</option>`
+      const target = selectedBranch || currentSelVal || userBranch || (customInp && customInp.value) || '';
+      sel.innerHTML = `<option value="" disabled ${target ? '' : 'selected'}>Pilih cabang Anda</option>` + branches.map(b =>
+        `<option value="${escapeHtml(b)}" ${target && normalizeBranchKey(b) === normalizeBranchKey(target) ? 'selected' : ''}>${escapeHtml(b)}</option>`
       ).join('') + `<option value="__CUSTOM__">+ Ketik Nama Cabang Baru...</option>`;
       if (customInp && sel.value !== '__CUSTOM__') {
         customInp.value = sel.value;
