@@ -957,6 +957,68 @@
       .bim-fade-up, .bim-float-y, .bim-wave-hand, .bim-blob, .bim-pulse-ring, .bim-hero-grad { animation: none !important; }
       .bim-svc-card, .bim-stat, .bim-tab-btn { transition: none !important; }
     }
+        /* ===== Lapisan animasi UI (User & Master) ===== */
+    @keyframes bimStaggerIn { from { opacity: 0; transform: translateY(18px) scale(.985); } to { opacity: 1; transform: none; } }
+    @keyframes bimRowIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+    @keyframes bimSoftIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes bimBarGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes bimOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes bimPanelPop { 0% { opacity: 0; transform: translateY(24px) scale(.94); } 60% { opacity: 1; transform: translateY(-3px) scale(1.008); } 100% { opacity: 1; transform: none; } }
+    @keyframes bimToastIn { 0% { opacity: 0; transform: translateX(36px) scale(.95); } 60% { opacity: 1; transform: translateX(-4px) scale(1.01); } 100% { opacity: 1; transform: none; } }
+    @keyframes bimToastOut { to { opacity: 0; transform: translateX(32px) scale(.96); } }
+    @keyframes bimToastTimer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+    @keyframes bimBellRing { 0%, 100% { transform: rotate(0); } 12% { transform: rotate(18deg); } 24% { transform: rotate(-15deg); } 36% { transform: rotate(11deg); } 48% { transform: rotate(-8deg); } 60% { transform: rotate(4deg); } 72% { transform: rotate(0); } }
+    @keyframes bimBadgePop { 0% { transform: scale(0); } 70% { transform: scale(1.3); } 100% { transform: scale(1); } }
+    @keyframes bimBadgePing { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, .55); } 70%, 100% { box-shadow: 0 0 0 9px rgba(22, 163, 74, 0); } }
+    @keyframes bimNavIn { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+    @keyframes bimNavPop { 0% { transform: scale(.95); opacity: .5; } 60% { transform: scale(1.025); } 100% { transform: none; opacity: 1; } }
+    @keyframes bimNavBar { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    @keyframes bimRipple { from { transform: scale(0); opacity: .45; } to { transform: scale(1); opacity: 0; } }
+
+    .bim-stagger-in { animation: bimStaggerIn .6s cubic-bezier(.22, 1, .36, 1) both; animation-delay: var(--bim-d, 0ms); }
+    .bim-row-in { animation: bimRowIn .45s cubic-bezier(.22, 1, .36, 1) both; animation-delay: var(--bim-d, 0ms); }
+    .bim-soft-in { animation: bimSoftIn .38s cubic-bezier(.22, 1, .36, 1) both; animation-delay: var(--bim-d, 0ms); }
+    .bim-bar-grow { transform-origin: left center; animation: bimBarGrow 1s cubic-bezier(.22, 1, .36, 1) both; animation-delay: var(--bim-d, 200ms); }
+    .bim-ov-in { animation: bimOverlayIn .24s ease both; }
+    .bim-panel-in { animation: bimPanelPop .45s cubic-bezier(.22, 1, .36, 1) both; }
+    .bim-toast-in { animation: bimToastIn .5s cubic-bezier(.22, 1, .36, 1) both; }
+    .bim-toast-out { animation: bimToastOut .28s ease-in both; }
+    .bim-toast-timer { transform-origin: left center; animation: bimToastTimer 3.8s linear forwards; }
+    .bim-nav-in { animation: bimNavIn .5s cubic-bezier(.22, 1, .36, 1) both; animation-delay: var(--bim-d, 0ms); }
+
+    /* Sidebar: geser saat disentuh, ikon bergoyang, penanda aktif menyala */
+    #sidebar-nav button { position: relative; }
+    #sidebar-nav button:hover { transform: translateX(3px); }
+    #sidebar-nav button svg { transition: transform .25s cubic-bezier(.34, 1.56, .64, 1); }
+    #sidebar-nav button:hover svg { transform: scale(1.18) rotate(-7deg); }
+    #sidebar-nav .bim-nav-active { animation: bimNavPop .5s cubic-bezier(.22, 1, .36, 1); }
+    #sidebar-nav .bim-nav-active::before { content: ''; position: absolute; left: -12px; top: 22%; bottom: 22%; width: 3px; border-radius: 0 3px 3px 0; background: #F4B942; box-shadow: 0 0 10px rgba(244, 185, 66, .7); transform-origin: center; animation: bimNavBar .45s cubic-bezier(.22, 1, .36, 1) both; }
+
+    /* Bel notifikasi */
+    #btn-topbar-notif.bim-ring svg { transform-origin: 50% 8%; animation: bimBellRing 1.3s ease-in-out 2; }
+    #topbar-notif-count:not(.hidden) { animation: bimBadgePop .5s cubic-bezier(.34, 1.56, .64, 1) both; }
+    #btn-topbar-notif.bim-has-unread #topbar-notif-count { animation: bimBadgePop .5s cubic-bezier(.34, 1.56, .64, 1) both, bimBadgePing 2.6s ease-out 1.2s infinite; }
+
+    /* Kartu kecil terangkat saat disentuh */
+    .bim-card-lift { cursor: default; }
+    .bim-card-lift:hover { transform: translateY(-3px); }
+    .bim-card-lift:active { transform: translateY(-1px) scale(.995); }
+
+    /* Efek riak pada tombol hijau utama */
+    .bim-ripple-dot { position: absolute; border-radius: 9999px; background: rgba(255, 255, 255, .55); pointer-events: none; animation: bimRipple .65s ease-out forwards; }
+
+    /* Mikro-interaksi global (spesifisitas nol agar tidak menimpa kelas Tailwind) */
+    :where(button) { transition-property: transform, box-shadow, background-color, color, border-color, opacity; transition-duration: .18s; transition-timing-function: cubic-bezier(.22, 1, .36, 1); }
+    :where(button:not(:disabled)):active { transform: scale(.97); }
+    :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):focus { box-shadow: 0 0 0 3px rgba(22, 163, 74, .16); }
+    :where(tbody tr) { transition: background-color .15s ease; }
+    :where(tbody tr:hover) { background-color: rgba(22, 163, 74, .05); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bim-stagger-in, .bim-row-in, .bim-soft-in, .bim-bar-grow, .bim-ov-in, .bim-panel-in, .bim-toast-in, .bim-toast-out, .bim-toast-timer, .bim-nav-in,
+      #sidebar-nav .bim-nav-active, #sidebar-nav .bim-nav-active::before, #btn-topbar-notif.bim-ring svg, #topbar-notif-count, .bim-ripple-dot { animation: none !important; }
+      #sidebar-nav button:hover, #sidebar-nav button:hover svg, .bim-card-lift:hover { transform: none !important; }
+    }
     </style>
 </head>
 
@@ -2833,6 +2895,15 @@
         badge.textContent = String(unreadCount);
         badge.classList.toggle('hidden', unreadCount === 0);
       }
+      const bellBtn = document.getElementById('btn-topbar-notif');
+      if (bellBtn) {
+        bellBtn.classList.toggle('bim-has-unread', unreadCount > 0);
+        const prev = window.__bimLastUnread;
+        if (unreadCount > 0 && (prev === undefined || unreadCount > prev)) {
+          bellBtn.classList.remove('bim-ring'); void bellBtn.offsetWidth; bellBtn.classList.add('bim-ring');
+        }
+        window.__bimLastUnread = unreadCount;
+      }
     }
 
     function renderSidebar() {
@@ -2906,6 +2977,10 @@
 
       navContainer.innerHTML = html;
       refreshIcons();
+      if (!window.__bimSidebarAnimated && user.role !== 'GUEST') {
+        window.__bimSidebarAnimated = true;
+        [...navContainer.children].forEach((el, i) => { el.style.setProperty('--bim-d', (i * 32) + 'ms'); el.classList.add('bim-nav-in'); });
+      }
     }
 
     function openGuestOrderShortcut(subTab) {
@@ -3023,6 +3098,7 @@
 
       renderSidebar();
       renderActiveModule();
+      if (typeof bimAnimateView === 'function') bimAnimateView(document.getElementById('view-' + moduleId));
     }
 
     function renderActiveModule() {
@@ -3317,11 +3393,16 @@
         <i data-lucide="${iconMap[type] || 'info'}" class="w-4 h-4 text-[#F4B942] shrink-0 mt-0.5"></i>
         <div class="flex-1 leading-relaxed">${escapeHtml(message)}</div>
       `;
+      toast.classList.add('bim-toast-in', 'relative', 'overflow-hidden');
+      const timerBar = document.createElement('div');
+      timerBar.className = 'absolute left-0 right-0 bottom-0 h-0.5 bg-white/35 bim-toast-timer';
+      toast.appendChild(timerBar);
       container.appendChild(toast);
       refreshIcons();
       setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 220);
+        toast.classList.remove('bim-toast-in');
+        toast.classList.add('bim-toast-out');
+        setTimeout(() => toast.remove(), 300);
       }, 3800);
     }
 
@@ -3399,6 +3480,7 @@
     function openLoginModal() {
       try { sessionStorage.removeItem('BIM_SESSION_AUTHENTICATED'); } catch (_) {}
       if (typeof closeOrderStatusAnimation === 'function') closeOrderStatusAnimation();
+      window.__bimSidebarAnimated = false;
       ensureBranchEmailAccountsExist(true);
       const currentUser = getCurrentUser();
       populateGuestBranchDropdown(currentUser && currentUser.role === 'GUEST' ? currentUser.branch : '');
@@ -3420,6 +3502,7 @@
       if (ls) ls.classList.add('hidden');
       if (typeof stopLoginPeekingCycle === 'function') stopLoginPeekingCycle();
       setTimeout(() => { if (typeof checkAndPlayGuestOrderAnimations === 'function') checkAndPlayGuestOrderAnimations(); }, 600);
+      if (typeof bimPlayShellEntrance === 'function') setTimeout(bimPlayShellEntrance, 30);
     }
 
     function switchLoginTab(mode) {
@@ -17410,6 +17493,181 @@
       document.addEventListener('visibilitychange', () => { if (!document.hidden) window.pxCatKick(); });
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
       else init();
+    })();
+
+    // ===== Lapisan animasi UI (User & Master): halaman, kartu, angka, bar, modal, riak tombol =====
+    (function () {
+      const reduceMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      let lastNavAt = 0;
+
+      // Hitung naik angka KPI sambil mempertahankan format (Rp 1.250.000, 12,5%, 3,4K ...)
+      function parseFormatted(text) {
+        const m = String(text).trim().match(/^(\D{0,4}?)(\d[\d.,]*)(\D{0,10})$/);
+        if (!m) return null;
+        const token = m[2];
+        const lastSep = Math.max(token.lastIndexOf('.'), token.lastIndexOf(','));
+        let dec = 0, decSep = '', thouSep = '';
+        if (lastSep >= 0) {
+          const after = token.length - lastSep - 1;
+          if (after <= 2) { decSep = token[lastSep]; dec = after; }
+          const rest = dec ? token.slice(0, lastSep) : token;
+          const t = rest.match(/[.,]/);
+          if (t) thouSep = t[0];
+        }
+        const value = parseFloat(token.replace(/[.,]/g, (c, i) => (dec && i === lastSep) ? '.' : ''));
+        if (!isFinite(value) || value <= 0 || value > 1e9) return null;
+        return { prefix: m[1], suffix: m[3], value, dec, decSep, thouSep };
+      }
+      function formatFormatted(p, v) {
+        const fixed = p.dec ? v.toFixed(p.dec) : String(Math.round(v));
+        let [ip, fp] = fixed.split('.');
+        if (p.thouSep) ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, p.thouSep);
+        return p.prefix + ip + (p.dec ? p.decSep + fp : '') + p.suffix;
+      }
+      function countUpEl(el, delay) {
+        const original = el.textContent;
+        const p = parseFormatted(original);
+        if (!p) return;
+        const dur = 950;
+        let start = 0;
+        const step = (now) => {
+          if (!start) start = now;
+          const k = Math.min(1, (now - start) / dur);
+          const eased = 1 - Math.pow(1 - k, 3);
+          el.textContent = k < 1 ? formatFormatted(p, p.value * eased) : original;
+          if (k < 1 && document.body.contains(el)) requestAnimationFrame(step);
+        };
+        el.textContent = formatFormatted(p, 0);
+        setTimeout(() => requestAnimationFrame(step), delay);
+      }
+
+      function restart(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+      // mode 'nav' = animasi penuh saat pindah modul; 'soft' = halus saat konten dirender ulang
+      window.bimAnimateView = function (view, opts) {
+        if (!view || reduceMotion() || view.classList.contains('hidden')) return;
+        const soft = !!(opts && opts.soft);
+        if (soft) {
+          [...view.children].slice(0, 8).forEach((c, i) => { c.style.setProperty('--bim-d', (i * 45) + 'ms'); restart(c, 'bim-soft-in'); });
+          return;
+        }
+        lastNavAt = Date.now();
+        const cards = [...view.querySelectorAll('.bim-card')].filter(c => !c.parentElement.closest('.bim-card')).slice(0, 28);
+        cards.forEach((c, i) => {
+          c.style.setProperty('--bim-d', (Math.min(i, 12) * 60) + 'ms');
+          restart(c, 'bim-stagger-in');
+          if (c.offsetHeight > 0 && c.offsetHeight < 300) c.classList.add('bim-card-lift');
+        });
+        view.querySelectorAll('tbody').forEach(tb => {
+          [...tb.rows].slice(0, 14).forEach((r, i) => { r.style.setProperty('--bim-d', (220 + i * 38) + 'ms'); restart(r, 'bim-row-in'); });
+        });
+        view.querySelectorAll('div[style*="width"]').forEach((b, i) => {
+          if (!/%$/.test(b.style.width || '') || b.offsetHeight > 16 || b.offsetHeight === 0) return;
+          const track = b.parentElement;
+          if (!track || !(track.className.includes('rounded-full') || track.className.includes('overflow-hidden'))) return;
+          b.style.setProperty('--bim-d', (260 + Math.min(i, 10) * 50) + 'ms');
+          restart(b, 'bim-bar-grow');
+        });
+        let n = 0;
+        view.querySelectorAll('.font-display').forEach(el => {
+          if (n >= 24 || el.children.length || el.closest('[data-countup]') || el.hasAttribute('data-nocount')) return;
+          if (!/text-(xl|2xl|3xl|4xl)/.test(el.className) || !/font-(extrabold|bold|black)/.test(el.className)) return;
+          if (el.textContent.length > 18 || !parseFormatted(el.textContent)) return;
+          countUpEl(el, 160 + Math.min(n, 8) * 70);
+          n++;
+        });
+      };
+
+      // Animasi masuk setelah login / saat sesi dipulihkan
+      window.bimPlayShellEntrance = function () {
+        if (reduceMotion()) return;
+        const side = document.getElementById('app-sidebar');
+        if (!side || !side.parentElement) return;
+        const shell = side.parentElement;
+        [...shell.children].forEach((el, i) => {
+          if (el === side || el.id === 'mobile-sidebar-backdrop') return;
+          el.style.setProperty('--bim-d', (120 + i * 70) + 'ms');
+          restart(el, 'bim-stagger-in');
+        });
+        [...side.children].forEach((el, i) => { el.style.setProperty('--bim-d', (i * 70) + 'ms'); restart(el, 'bim-nav-in'); });
+      };
+
+      // Modal & panel: latar memudar, kotak muncul memantul
+      function popOverlay(el) {
+        if (!(el instanceof HTMLElement) || reduceMotion()) return;
+        if (!el.classList.contains('fixed') || !el.classList.contains('inset-0') || el.classList.contains('hidden')) return;
+        if (['bim-order-anim-overlay', 'login-screen', 'mobile-sidebar-backdrop'].includes(el.id)) return;
+        restart(el, 'bim-ov-in');
+        const panel = [...el.children].find(c => c.tagName === 'DIV' && !c.classList.contains('absolute') && !c.classList.contains('hidden'));
+        if (panel) restart(panel, 'bim-panel-in');
+      }
+      function watchModals() {
+        new MutationObserver(muts => {
+          for (const m of muts) {
+            if (m.type === 'attributes') {
+              const t = m.target;
+              if (t.classList && t.classList.contains('inset-0') && (m.oldValue || '').split(/\s+/).includes('hidden')) popOverlay(t);
+            } else {
+              m.addedNodes.forEach(popOverlay);
+            }
+          }
+        }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true, childList: true });
+      }
+
+      // Konten modul dirender ulang (ganti tab/filter): animasi halus, kecuali sedang mengetik
+      function watchViewRerenders() {
+        document.querySelectorAll('[id^="view-"]').forEach(view => {
+          let timer = null;
+          new MutationObserver(() => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+              if (view.classList.contains('hidden')) return;
+              if (Date.now() - lastNavAt < 900) return;
+              const ae = document.activeElement;
+              if (ae && view.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+              lastNavAt = Date.now() - 600;
+              window.bimAnimateView(view, { soft: true });
+            }, 70);
+          }).observe(view, { childList: true });
+        });
+      }
+
+      // Riak pada tombol hijau utama
+      function watchRipples() {
+        document.addEventListener('click', (e) => {
+          if (reduceMotion()) return;
+          const btn = e.target.closest && e.target.closest('button');
+          if (!btn || btn.disabled) return;
+          const cls = btn.className || '';
+          if (!(cls.includes('bg-[#14532D]') || cls.includes('from-[#14532D]'))) return;
+          if (btn.querySelector(':scope > .absolute')) return;
+          const r = btn.getBoundingClientRect();
+          const size = Math.max(r.width, r.height) * 1.6;
+          const dot = document.createElement('span');
+          dot.className = 'bim-ripple-dot';
+          dot.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - r.left - size / 2}px;top:${e.clientY - r.top - size / 2}px;`;
+          const prevPos = getComputedStyle(btn).position, prevOv = btn.style.overflow;
+          if (prevPos === 'static') btn.style.position = 'relative';
+          btn.style.overflow = 'hidden';
+          btn.appendChild(dot);
+          setTimeout(() => { dot.remove(); btn.style.overflow = prevOv; if (prevPos === 'static') btn.style.position = ''; }, 700);
+        }, true);
+      }
+
+      function init() {
+        watchModals();
+        watchViewRerenders();
+        watchRipples();
+        const login = document.getElementById('login-screen');
+        if (login && login.classList.contains('hidden')) {
+          setTimeout(() => {
+            window.bimPlayShellEntrance();
+            const active = document.querySelector('[id^="view-"]:not(.hidden)');
+            if (active) window.bimAnimateView(active);
+          }, 60);
+        }
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
     })();
 
     window.addEventListener('DOMContentLoaded', function() {
