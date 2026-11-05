@@ -11259,11 +11259,11 @@
               ${user.role !== 'GUEST' ? `
                 <button type="button" onclick="exportBranchDesignRecapCsv()" title="Unduh Rekap Order per Cabang (Excel/CSV)" class="px-3 py-1.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition">
                   <i data-lucide="download" class="w-3.5 h-3.5 text-[#F4B942]"></i>
-                  <span>Export Rekap Cabang (Excel/CSV)</span>
+                  <span>Export Rekap Cabang (Excel)</span>
                 </button>
                 <button type="button" onclick="exportDetailedDesignOrdersCsv()" title="Unduh Detail Seluruh Pesanan Desain (Excel/CSV)" class="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition">
                   <i data-lucide="table" class="w-3.5 h-3.5 text-emerald-600"></i>
-                  <span>Export Detail Pesanan</span>
+                  <span>Export Detail Pesanan (Excel)</span>
                 </button>
                 <button type="button" onclick="openSpreadsheetImportModal('design_order')" class="px-3 py-1.5 rounded-xl border border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
                   <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
@@ -13897,6 +13897,168 @@
       return `"${s.replace(/"/g, '""')}"`;
     }
 
+    // =========================================================================
+    // Penulis file Excel (.xlsx) mandiri: tabel rapi (header berwarna, lebar kolom, garis, baris selang-seling)
+    // Tanpa pustaka luar. Dipakai untuk ekspor Rekap & Detail Order Desain.
+    // =========================================================================
+    function bimCrc32(bytes) {
+      if (!bimCrc32.table) {
+        const t = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          t[n] = c >>> 0;
+        }
+        bimCrc32.table = t;
+      }
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < bytes.length; i++) crc = bimCrc32.table[(crc ^ bytes[i]) & 255] ^ (crc >>> 8);
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function bimZipStore(files) {
+      const enc = new TextEncoder();
+      const u16 = v => [v & 255, (v >>> 8) & 255];
+      const u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+      const dosTime = 0x6000, dosDate = ((2026 - 1980) << 9) | (1 << 5) | 1;
+      const chunks = [], central = [];
+      let offset = 0;
+      files.forEach(f => {
+        const nameB = enc.encode(f.name), data = enc.encode(f.text);
+        const crc = bimCrc32(data), size = data.length;
+        const local = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...u16(20), ...u16(0x0800), ...u16(0), ...u16(dosTime), ...u16(dosDate),
+          ...u32(crc), ...u32(size), ...u32(size), ...u16(nameB.length), ...u16(0)]);
+        chunks.push(local, nameB, data);
+        central.push({ nameB, crc, size, offset });
+        offset += local.length + nameB.length + size;
+      });
+      const cdStart = offset;
+      central.forEach(c => {
+        const hdr = new Uint8Array([0x50, 0x4b, 0x01, 0x02, ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(dosTime), ...u16(dosDate),
+          ...u32(c.crc), ...u32(c.size), ...u32(c.size), ...u16(c.nameB.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(c.offset)]);
+        chunks.push(hdr, c.nameB);
+        offset += hdr.length + c.nameB.length;
+      });
+      const cdSize = offset - cdStart;
+      chunks.push(new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...u16(0), ...u16(0), ...u16(central.length), ...u16(central.length), ...u32(cdSize), ...u32(cdStart), ...u16(0)]));
+      return new Blob(chunks, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    }
+
+    function bimXmlEsc(v) {
+      return String(v === null || v === undefined ? '' : v)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function bimColLetter(i) {
+      let s = '';
+      i += 1;
+      while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); }
+      return s;
+    }
+
+    // opts: { fileName, sheetName, title, subtitle, columns:[{header,width,align:'left'|'center',status:bool}], rows:[[...]], totalRow:[...] }
+    function bimBuildXlsxBlob(opts) {
+      const cols = opts.columns, nCols = cols.length, lastCol = bimColLetter(nCols - 1);
+      const HDR_ROW = 4, FIRST = HDR_ROW + 1;
+      const cellStr = (ref, s, text) => `<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${bimXmlEsc(text)}</t></is></c>`;
+      const cellNum = (ref, s, n) => `<c r="${ref}" s="${s}"><v>${n}</v></c>`;
+      const estHeight = (vals) => {
+        let lines = 1;
+        vals.forEach((v, i) => {
+          const w = Math.max(6, cols[i].width || 14);
+          const l = String(v === null || v === undefined ? '' : v).split(/\r?\n/).reduce((a, part) => a + Math.max(1, Math.ceil(part.length / (w * 1.05))), 0);
+          if (l > lines) lines = l;
+        });
+        return Math.min(170, Math.max(21, lines * 15 + 6));
+      };
+      const statusStyle = (v) => {
+        const t = String(v || '').toLowerCase();
+        if (t === 'menunggu') return 8;
+        if (t === 'dikerjakan') return 9;
+        if (t === 'selesai') return 10;
+        return 6;
+      };
+
+      let rowsXml = '';
+      rowsXml += `<row r="1" ht="30" customHeight="1">${cellStr('A1', 1, opts.title || '')}</row>`;
+      rowsXml += `<row r="2" ht="18" customHeight="1">${cellStr('A2', 2, opts.subtitle || '')}</row>`;
+      rowsXml += `<row r="3" ht="8" customHeight="1"/>`;
+      rowsXml += `<row r="${HDR_ROW}" ht="34" customHeight="1">${cols.map((c, i) => cellStr(bimColLetter(i) + HDR_ROW, 3, c.header)).join('')}</row>`;
+
+      opts.rows.forEach((vals, r) => {
+        const rowNo = FIRST + r, zebra = r % 2 === 1;
+        const cells = vals.map((v, i) => {
+          const ref = bimColLetter(i) + rowNo, c = cols[i];
+          if (c.status) return cellStr(ref, statusStyle(v), v);
+          const s = c.align === 'center' ? (zebra ? 7 : 6) : (zebra ? 5 : 4);
+          if (typeof v === 'number' && isFinite(v)) return cellNum(ref, s, v);
+          return cellStr(ref, s, v);
+        }).join('');
+        rowsXml += `<row r="${rowNo}" ht="${estHeight(vals)}" customHeight="1">${cells}</row>`;
+      });
+
+      const lastDataRow = FIRST + opts.rows.length - 1;
+      let totalRowNo = 0;
+      if (opts.totalRow) {
+        totalRowNo = lastDataRow + 1;
+        const cells = opts.totalRow.map((v, i) => {
+          const ref = bimColLetter(i) + totalRowNo, c = cols[i];
+          const s = c.align === 'center' ? 12 : 11;
+          if (typeof v === 'number' && isFinite(v)) return cellNum(ref, s, v);
+          return cellStr(ref, s, v);
+        }).join('');
+        rowsXml += `<row r="${totalRowNo}" ht="26" customHeight="1">${cells}</row>`;
+      }
+
+      const colsXml = `<cols>${cols.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width || 14}" customWidth="1"/>`).join('')}</cols>`;
+      const filterEnd = Math.max(lastDataRow, HDR_ROW);
+      const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0" showGridLines="0" tabSelected="1"><pane ySplit="${HDR_ROW}" topLeftCell="A${FIRST}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A${FIRST}" sqref="A${FIRST}"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>${colsXml}<sheetData>${rowsXml}</sheetData><autoFilter ref="A${HDR_ROW}:${lastCol}${filterEnd}"/><mergeCells count="2"><mergeCell ref="A1:${lastCol}1"/><mergeCell ref="A2:${lastCol}2"/></mergeCells><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+
+      const f = (b, sz, color) => `<font>${b ? '<b/>' : ''}<sz val="${sz}"/><color rgb="${color}"/><name val="Calibri"/><family val="2"/></font>`;
+      const fill = (rgb) => `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/><bgColor indexed="64"/></patternFill></fill>`;
+      const xf = (font, fl, border, h, v, wrap) => `<xf numFmtId="0" fontId="${font}" fillId="${fl}" borderId="${border}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="${h}" vertical="${v}"${wrap ? ' wrapText="1"' : ''}/></xf>`;
+      const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="8">${f(0, 11, 'FF1F2937')}${f(1, 11, 'FFFFFFFF')}${f(1, 16, 'FF14532D')}<font><i/><sz val="10"/><color rgb="FF6B7280"/><name val="Calibri"/><family val="2"/></font>${f(1, 11, 'FF14532D')}${f(1, 11, 'FF92400E')}${f(1, 11, 'FF1D4ED8')}${f(1, 11, 'FF166534')}</fonts><fills count="8"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fill('FF14532D')}${fill('FFF3F8F4')}${fill('FFFDE68A')}${fill('FFFEF3C7')}${fill('FFDBEAFE')}${fill('FFDCFCE7')}</fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right><top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="13">${xf(0, 0, 0, 'left', 'bottom', false)}${xf(2, 0, 0, 'left', 'center', false)}${xf(3, 0, 0, 'left', 'center', false)}${xf(1, 2, 1, 'center', 'center', true)}${xf(0, 0, 1, 'left', 'top', true)}${xf(0, 3, 1, 'left', 'top', true)}${xf(0, 0, 1, 'center', 'top', true)}${xf(0, 3, 1, 'center', 'top', true)}${xf(5, 5, 1, 'center', 'top', true)}${xf(6, 6, 1, 'center', 'top', true)}${xf(7, 7, 1, 'center', 'top', true)}${xf(4, 4, 1, 'left', 'center', true)}${xf(4, 4, 1, 'center', 'center', true)}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+
+      const sheetName = String(opts.sheetName || 'Data').replace(/[\[\]\:\*\?\/\\]/g, ' ').slice(0, 31);
+      const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView xWindow="0" yWindow="0" windowWidth="24000" windowHeight="12000"/></bookViews><sheets><sheet name="${bimXmlEsc(sheetName)}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${sheetName.replace(/'/g, "''")}'!$A$${HDR_ROW}:$${lastCol}$${filterEnd}</definedName></definedNames></workbook>`;
+
+      return bimZipStore([
+        { name: '[Content_Types].xml', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
+        { name: '_rels/.rels', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+        { name: 'xl/workbook.xml', text: workbookXml },
+        { name: 'xl/_rels/workbook.xml.rels', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
+        { name: 'xl/styles.xml', text: stylesXml },
+        { name: 'xl/worksheets/sheet1.xml', text: sheetXml }
+      ]);
+    }
+
+    // Mengunduh .xlsx; bila gagal, jatuh ke CSV bertitik-koma (terbaca benar di Excel regional Indonesia).
+    function bimDownloadStyledXlsx(opts) {
+      try {
+        const blob = bimBuildXlsxBlob(opts);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = opts.fileName;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        return true;
+      } catch (err) {
+        console.error('Ekspor XLSX gagal, memakai CSV:', err);
+        const q = v => `"${String(v === null || v === undefined ? '' : v).replace(/\r?\n/g, ' ').replace(/"/g, '""')}"`;
+        const lines = [opts.columns.map(c => q(c.header)).join(';'), ...opts.rows.map(r => r.map(q).join(';'))];
+        if (opts.totalRow) lines.push(opts.totalRow.map(q).join(';'));
+        triggerDownload('\uFEFFsep=;\r\n' + lines.join('\r\n'), opts.fileName.replace(/\.xlsx$/i, '.csv'), 'text/csv;charset=utf-8;');
+        return false;
+      }
+    }
+
     function exportBranchDesignRecapCsv() {
       const user = getCurrentUser();
       if (user.role === 'GUEST') {
@@ -13919,7 +14081,7 @@
         'ID Order Terakhir',
         'Waktu Order Terakhir'
       ];
-      const csvRows = rowsData.map((r, idx) => {
+      const xlRows = rowsData.map((r, idx) => {
         const pct = r.total > 0 ? Math.round((r.completed / r.total) * 100) : 0;
         return [
           idx + 1,
@@ -13934,7 +14096,7 @@
           `${pct}%`,
           r.lastOrderCode,
           r.lastOrderAt
-        ].map(escapeCsvCell).join(',');
+        ];
       });
 
       const totalAll = orders.length;
@@ -13945,7 +14107,7 @@
       const totalDone = orders.filter(o => o.status === 'Selesai').length;
       const totalPct = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
 
-      csvRows.push([
+      const xlTotal = [
         '',
         'TOTAL KESELURUHAN',
         `${rowsData.length} Cabang`,
@@ -13958,13 +14120,21 @@
         `${totalPct}%`,
         '-',
         getNowWIB()
-      ].map(escapeCsvCell).join(','));
+      ];
 
-      const csvContent = '\uFEFF' + [headers.map(escapeCsvCell).join(','), ...csvRows].join('\r\n');
       const dateTag = new Date().toISOString().slice(0, 10);
-      triggerDownload(csvContent, `BIM_Rekap_Order_Desain_Per_Cabang_${dateTag}.csv`, 'text/csv;charset=utf-8;');
+      const recapWidths = [6, 26, 34, 14, 14, 14, 15, 15, 15, 15, 24, 26];
+      bimDownloadStyledXlsx({
+        fileName: `BIM_Rekap_Order_Desain_Per_Cabang_${dateTag}.xlsx`,
+        sheetName: 'Rekap per Cabang',
+        title: 'BIM Creative Hub — Rekap Order Desain per Cabang',
+        subtitle: `Diekspor ${getNowWIB()} • ${rowsData.length} cabang • ${totalAll} pesanan • oleh ${user.fullName}`,
+        columns: headers.map((hd, i) => ({ header: hd, width: recapWidths[i], align: (i === 1 || i === 2) ? 'left' : 'center' })),
+        rows: xlRows,
+        totalRow: xlTotal
+      });
       logAudit('Antrean Desain', 'EXPORT_BRANCH_RECAP', `RECAP-${dateTag}`, `${user.fullName} mengunduh Rekap Laporan Order Desain per Cabang (${rowsData.length} cabang, ${totalAll} pesanan)`);
-      showToast(`Rekap Order Desain per Cabang (${rowsData.length} cabang) berhasil diunduh ke Excel/CSV!`, 'success');
+      showToast(`Rekap Order Desain per Cabang (${rowsData.length} cabang) berhasil diunduh ke Excel (.xlsx)!`, 'success');
     }
 
     function exportDetailedDesignOrdersCsv(branchFilterOptional) {
@@ -13998,7 +14168,7 @@
         'Waktu Selesai'
       ];
 
-      const csvRows = orders.map((o, idx) => {
+      const xlRows = orders.map((o, idx) => {
         const isIdc = o.orderType === 'ID_CARD';
         const person = isIdc && o.idCardSpec ? o.idCardSpec.fullName : o.requesterName;
         const phone = o.phone || (o.idCardSpec && o.idCardSpec.contactPhone) || '-';
@@ -14032,17 +14202,25 @@
           o.createdAt || '-',
           o.completedByName || '-',
           o.completedAt || '-'
-        ].map(escapeCsvCell).join(',');
+        ];
       });
 
-      const csvContent = '\uFEFF' + [headers.map(escapeCsvCell).join(','), ...csvRows].join('\r\n');
       const dateTag = new Date().toISOString().slice(0, 10);
       const brSlug = branchFilterOptional && branchFilterOptional !== 'ALL'
         ? '_' + normalizeBranchKey(branchFilterOptional).replace(/\s+/g, '_')
         : '_Semua_Cabang';
-      triggerDownload(csvContent, `BIM_Detail_Order_Desain${brSlug}_${dateTag}.csv`, 'text/csv;charset=utf-8;');
+      const detailWidths = [6, 21, 17, 21, 26, 18, 24, 18, 28, 48, 34, 18, 16, 23, 22, 23];
+      const centerCols = new Set([0, 1, 2, 5, 7, 11, 13, 15]);
+      bimDownloadStyledXlsx({
+        fileName: `BIM_Detail_Order_Desain${brSlug}_${dateTag}.xlsx`,
+        sheetName: 'Detail Order Desain',
+        title: 'BIM Creative Hub — Detail Order Desain' + (branchFilterOptional && branchFilterOptional !== 'ALL' ? ` (${branchFilterOptional})` : ' (Semua Cabang)'),
+        subtitle: `Diekspor ${getNowWIB()} • ${orders.length} pesanan • oleh ${user.fullName}`,
+        columns: headers.map((hd, i) => ({ header: hd, width: detailWidths[i], align: centerCols.has(i) ? 'center' : 'left', status: i === 12 })),
+        rows: xlRows
+      });
       logAudit('Antrean Desain', 'EXPORT_DETAIL_ORDERS', `DETAIL-${dateTag}`, `${user.fullName} mengunduh Detail Laporan Pesanan Desain (${orders.length} pesanan)`);
-      showToast(`Detail ${orders.length} pesanan desain berhasil diunduh ke Excel/CSV!`, 'success');
+      showToast(`Detail ${orders.length} pesanan desain berhasil diunduh ke Excel (.xlsx)!`, 'success');
     }
 
     function filterQueueByBranchFromRecap(branchName) {
