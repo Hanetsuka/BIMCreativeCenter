@@ -1019,6 +1019,13 @@
       #sidebar-nav .bim-nav-active, #sidebar-nav .bim-nav-active::before, #btn-topbar-notif.bim-ring svg, #topbar-notif-count, .bim-ripple-dot { animation: none !important; }
       #sidebar-nav button:hover, #sidebar-nav button:hover svg, .bim-card-lift:hover { transform: none !important; }
     }
+        /* Kolom isian ber-ikon: padding kiri/kanan dari kelas pl-*/pr-* harus menang atas aturan padding global */
+    html body input.pl-8:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]) { padding-left: 2rem !important; }
+    html body input.pl-9:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]) { padding-left: 2.25rem !important; }
+    html body input.pl-10:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]) { padding-left: 2.5rem !important; }
+    html body input.pl-11:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]) { padding-left: 2.75rem !important; }
+    html body input.pr-9:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]) { padding-right: 2.25rem !important; }
+    html body input.pr-10:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]) { padding-right: 2.5rem !important; }
     </style>
 </head>
 
@@ -1267,20 +1274,20 @@
     <div class="flex-1 flex flex-col min-w-0">
 
       <!-- Top Navigation Header with Breadcrumb, Global Search, Notifications & Profile -->
-      <header class="sticky top-0 z-20 h-16 bg-white/85 dark:bg-[#111C2E]/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/80 px-4 sm:px-6 flex items-center justify-between gap-3">
+      <header class="sticky top-0 z-20 h-16 bg-white/85 dark:bg-[#111C2E]/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/80 px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-3">
         <!-- Left: Hamburger & Breadcrumb + Page Title -->
-        <div class="flex items-center gap-3 min-w-0">
+        <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <button type="button" onclick="toggleMobileSidebar(true)" class="lg:hidden p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
             <i data-lucide="menu" class="w-5 h-5"></i>
           </button>
           <div class="min-w-0">
-            <div class="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+            <div class="hidden sm:flex items-center gap-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
               <span>Ruang Kerja Kreatif</span>
               <i data-lucide="chevron-right" class="w-3 h-3"></i>
               <span id="topbar-breadcrumb-current" class="text-emerald-700 dark:text-emerald-400 font-semibold truncate">Dashboard</span>
             </div>
             <div class="flex items-center gap-2">
-              <h1 id="topbar-page-title" class="text-sm sm:text-base font-extrabold font-display text-slate-900 dark:text-white truncate">Dashboard Creative Workspace</h1>
+              <h1 id="topbar-page-title" class="text-[15px] sm:text-base leading-tight font-extrabold font-display text-slate-900 dark:text-white truncate">Dashboard Creative Workspace</h1>
               <span id="topbar-data-mode-badge" class="hidden">
                 <span id="topbar-data-mode-text">DATA DEMO</span>
               </span>
@@ -1299,7 +1306,7 @@
         </div>
 
         <!-- Right: Theme Switcher, Notification Bell & User Profile Pill (Demo Role Switcher Removed) -->
-        <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button type="button" onclick="toggleProductionAuthLock()" id="btn-prod-auth-lock" class="hidden">
             <span id="btn-prod-auth-lock-label">Auth</span>
           </button>
@@ -1326,7 +1333,7 @@
           </button>
 
           <!-- Theme Selector (Light / Dark / System) -->
-          <div class="flex items-center bg-slate-100/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700" role="group" aria-label="Tema Tampilan">
+          <div class="hidden sm:flex items-center bg-slate-100/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700" role="group" aria-label="Tema Tampilan">
             <button type="button" onclick="setThemeMode('light')" id="theme-btn-light" class="p-1.5 rounded-lg text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition" title="Mode Terang (Light)">
               <i data-lucide="sun" class="w-3.5 h-3.5"></i>
             </button>
@@ -1337,6 +1344,11 @@
               <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
             </button>
           </div>
+
+          <!-- Tema cepat (ponsel) -->
+          <button type="button" onclick="toggleThemeQuick()" aria-label="Ganti tema" class="sm:hidden p-2 rounded-xl border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+            <i data-lucide="sun-moon" class="w-4 h-4"></i>
+          </button>
 
           <!-- Notification Bell -->
           <button type="button" onclick="navigateToModule('notifications')" id="btn-topbar-notif" class="relative p-2 rounded-xl border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition" title="Pusat Notifikasi">
@@ -1379,15 +1391,15 @@
       </main>
 
       <!-- Application Footer -->
-      <footer class="mt-auto border-t border-slate-200/70 dark:border-slate-800/80 py-3.5 px-6 text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
+      <footer class="mt-auto border-t border-slate-200/70 dark:border-slate-800/80 py-3 px-4 sm:px-6 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-1.5 sm:gap-2 text-center sm:text-left">
+        <div class="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-0.5">
           <span id="footer-app-name" class="font-bold text-slate-700 dark:text-slate-200">BIM CREATIVE HUB</span>
           <span>•</span>
           <span>Creative Workspace v3.0</span>
-          <span>•</span>
-          <span id="footer-storage-status" class="text-emerald-600 dark:text-emerald-400 font-medium">Penyimpanan Persisten Aktif</span>
+          <span id="footer-storage-sep" class="hidden">•</span>
+          <span id="footer-storage-status" class="hidden text-emerald-600 dark:text-emerald-400 font-medium">Penyimpanan Persisten Aktif</span>
         </div>
-        <div class="flex items-center gap-4">
+        <div id="footer-admin-actions" class="hidden items-center gap-4">
           <button type="button" onclick="exportFullDatabaseJson()" class="hover:text-emerald-600 dark:hover:text-emerald-400 font-medium">Backup Database (JSON)</button>
           <button type="button" onclick="openResetDatabaseModal()" class="hover:text-amber-600 dark:hover:text-amber-400 font-medium">Reset Data Awal</button>
         </div>
@@ -2981,6 +2993,25 @@
         window.__bimSidebarAnimated = true;
         [...navContainer.children].forEach((el, i) => { el.style.setProperty('--bim-d', (i * 32) + 'ms'); el.classList.add('bim-nav-in'); });
       }
+      applyRoleChrome(user);
+    }
+
+    // Footer & strip pengumuman mengikuti peran: backup/reset/status penyimpanan hanya untuk Master
+    function applyRoleChrome(user) {
+      const isMaster = !!user && user.role === 'MASTER';
+      const isGuest = !!user && user.role === 'GUEST';
+      const actions = document.getElementById('footer-admin-actions');
+      if (actions) { actions.classList.toggle('hidden', !isMaster); actions.classList.toggle('flex', isMaster); }
+      ['footer-storage-sep', 'footer-storage-status'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', !isMaster);
+      });
+      const bar = document.getElementById('system-announcement-bar');
+      if (bar) bar.classList.toggle('max-sm:hidden', isGuest);
+    }
+
+    function toggleThemeQuick() {
+      setThemeMode(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
     }
 
     function openGuestOrderShortcut(subTab) {
@@ -11461,19 +11492,22 @@
         const on = activeTab === id;
         const isQueue = id === 'queue';
         const shown = isQueue ? 'Pesanan Saya' : label;
+        const short = { id_card: 'ID Card', banner: 'Banner', queue: 'Pesanan' }[id] || shown;
         return `
           <button type="button" onclick="setDesignOrderTab('${id}')"
-            class="bim-tab-btn px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 ${
+            class="bim-tab-btn min-w-0 px-2 md:px-4 py-2 rounded-xl text-[11px] md:text-xs font-bold flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 ${
               on ? 'bg-white dark:bg-slate-800 text-[#14532D] dark:text-emerald-300 shadow-md' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
             }">
             <i data-lucide="${icon}" class="w-4 h-4 ${on ? 'text-[#16A34A]' : ''}"></i>
-            <span>${shown}</span>
-            ${isQueue ? `<span class="min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-extrabold flex items-center justify-center ${on ? 'bg-[#14532D] text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-200'}">${totalOrders}</span>` : ''}
+            <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+              <span class="md:hidden">${short}</span><span class="hidden md:inline">${shown}</span>
+              ${isQueue ? `<span class="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold flex items-center justify-center ${on ? 'bg-[#14532D] text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-200'}">${totalOrders}</span>` : ''}
+            </span>
           </button>`;
       }).join('');
 
       return `
-        <section class="bim-fade-up relative overflow-hidden rounded-[28px] p-5 sm:p-7 text-white bim-hero-grad bg-gradient-to-br from-[#0B3A20] via-[#14532D] to-[#16A34A] shadow-xl shadow-emerald-900/25">
+        <section class="bim-fade-up relative overflow-hidden rounded-3xl sm:rounded-[28px] p-4 sm:p-7 text-white bim-hero-grad bg-gradient-to-br from-[#0B3A20] via-[#14532D] to-[#16A34A] shadow-xl shadow-emerald-900/25">
           <div class="absolute inset-0 bim-hero-dots opacity-60 pointer-events-none"></div>
           <div class="absolute -top-14 -right-10 w-52 h-52 rounded-full bg-[#F4B942]/30 blur-3xl bim-blob pointer-events-none"></div>
           <div class="absolute -bottom-16 left-16 w-48 h-48 rounded-full bg-white/15 blur-3xl bim-blob pointer-events-none" style="animation-delay:-4s"></div>
@@ -11485,7 +11519,7 @@
                   <i data-lucide="map-pin" class="w-3 h-3"></i>${escapeHtml(user.branch)}
                 </span>
               </div>
-              <h2 class="text-2xl sm:text-[28px] leading-tight font-extrabold font-display tracking-tight">
+              <h2 class="text-xl sm:text-[28px] leading-tight font-extrabold font-display tracking-tight">
                 Halo, ${escapeHtml(user.fullName)}! <span class="bim-wave-hand">👋</span>
               </h2>
               <p class="text-xs sm:text-sm text-emerald-50/90 max-w-xl leading-relaxed">
@@ -11496,10 +11530,10 @@
           </div>
         </section>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${serviceHtml}</div>
+        <div class="hidden md:grid grid-cols-1 md:grid-cols-2 gap-4">${serviceHtml}</div>
 
-        <div class="bim-fade-up flex" style="animation-delay:.5s">
-          <div class="inline-flex flex-wrap gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">${tabHtml}</div>
+        <div class="bim-fade-up max-md:sticky max-md:top-16 max-md:z-10 max-md:-mx-4 max-md:px-4 max-md:py-2 max-md:bg-[#F6F8FB]/90 dark:max-md:bg-[#0B1220]/90 max-md:backdrop-blur-md" style="animation-delay:.5s">
+          <div class="grid grid-cols-3 md:inline-flex gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">${tabHtml}</div>
         </div>
       `;
     }
@@ -11611,13 +11645,13 @@
               <p class="text-xs text-slate-500 max-w-md mx-auto">
                 ${orders.length === 0
                   ? 'Pesanan ID Card atau Banner yang Anda ajukan akan muncul di sini beserta status pengerjaannya.'
-                  : 'Pilih "Semua Jenis Desain" untuk melihat seluruh pesanan Anda.'}
+                  : 'Pilih "Semua Jenis" untuk melihat seluruh pesanan Anda.'}
               </p>
             </div>
             <div class="flex items-center justify-center gap-2 pt-2">
               ${orders.length > 0 ? `
                 <button type="button" onclick="setOrdQueueFilter('type', 'ALL')" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">
-                  Semua Jenis Desain
+                  Semua Jenis
                 </button>
               ` : ''}
               <button type="button" onclick="setDesignOrderTab('id_card')" class="px-4 py-2 rounded-xl bg-[#14532D] text-white text-xs font-bold">
@@ -11777,7 +11811,7 @@
               const displayJob = o.jobTitle || (o.idCardSpec && o.idCardSpec.jobTitle) || '-';
               const photoUrl = isIdCard && o.idCardSpec && o.idCardSpec.photoDataUrl ? o.idCardSpec.photoDataUrl : '';
               return `
-                <div class="bim-card bim-card-lift p-5 flex flex-col justify-between space-y-4">
+                <div class="bim-card bim-card-lift p-4 sm:p-5 flex flex-col justify-between space-y-4">
                   <div class="space-y-3.5">
                     <!-- Top Card Meta: ID Order, Type Badge, Status Badge -->
                     <div class="flex items-center justify-between gap-2">
@@ -11842,25 +11876,25 @@
                   </div>
 
                   <!-- Card Footer: Production Actions & "Desain sudah terkirim" Checkbox/Button -->
-                  <div class="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <button type="button" onclick="openOrderDetailModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 transition">
+                  <div class="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2.5">
+                    <div class="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-2 sm:gap-1.5">
+                      <button type="button" onclick="openOrderDetailModal('${o.id}')" class="col-span-2 sm:col-span-1 justify-center px-3 py-2.5 sm:py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 transition">
                         <i data-lucide="eye" class="w-3.5 h-3.5 text-slate-500"></i>
                         <span>Detail &amp; Preview</span>
                       </button>
                       ${canModifyDesignOrder(o, user) ? `
-                        <button type="button" onclick="openEditDesignOrderModal('${o.id}')" title="Edit Pesanan" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 dark:text-amber-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
+                        <button type="button" onclick="openEditDesignOrderModal('${o.id}')" title="Edit Pesanan" class="justify-center px-2.5 py-2.5 sm:py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 dark:text-amber-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
                           <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
                           <span>Edit</span>
                         </button>
-                        <button type="button" onclick="openDeleteDesignOrderModal('${o.id}')" title="Hapus Pesanan" class="px-2.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-600 text-red-700 dark:text-red-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
+                        <button type="button" onclick="openDeleteDesignOrderModal('${o.id}')" title="Hapus Pesanan" class="justify-center px-2.5 py-2.5 sm:py-1.5 rounded-xl bg-red-500/15 hover:bg-red-600 text-red-700 dark:text-red-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
                           <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                           <span>Hapus</span>
                         </button>
                       ` : ''}
                     </div>
 
-                    <div class="flex items-center gap-1.5">
+                    <div class="hidden has-[*]:flex flex-wrap items-center gap-1.5">
                       ${canManageStatus ? `
                         <button type="button" onclick="openOrderWhatsAppModal('${o.id}')" title="Kabari pemesan via WhatsApp" class="px-2.5 py-1.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366] text-[#128C7E] hover:text-white dark:text-[#25D366] dark:hover:text-white text-[11px] font-bold flex items-center gap-1 transition">
                           <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
@@ -11902,18 +11936,18 @@
                       <div class="text-[11px] text-slate-500">${totalUnfinished} sedang diproses • ${totalDone} selesai • Cabang <strong>${escapeHtml(user.branch || '-')}</strong> ${user.email ? `• Login Email: <span class="font-mono text-emerald-700 dark:text-emerald-400">${escapeHtml(user.email)}</span>` : ''}</div>
                     </div>
                   </div>
-                  <div class="flex flex-wrap items-center gap-2 pt-1">
-                    <div class="relative flex-1 min-w-[220px] max-w-sm">
+                  <div class="flex items-center gap-2 pt-1">
+                    <div class="relative flex-1 min-w-0 sm:max-w-sm">
                       <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                       <input type="text" id="guest-inline-track-inp" value="${escapeHtml(APP_STATE.guestTrackedPhone || APP_STATE.guestTrackedOrderCode || '')}"
-                        placeholder="Cek pesanan dgn Nomor WA (0817...) atau Kode (BNR-...)"
-                        class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono" />
+                        placeholder="Nomor WA atau kode order"
+                        class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono" />
                     </div>
-                    <button type="button" onclick="applyGuestInlineTracker()" class="px-3 py-1.5 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold transition">
-                      Cek Pesanan
+                    <button type="button" onclick="applyGuestInlineTracker()" class="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-xs font-bold transition">
+                      <span class="sm:hidden">Cek</span><span class="hidden sm:inline">Cek Pesanan</span>
                     </button>
                     ${(APP_STATE.guestTrackedPhone || APP_STATE.guestTrackedOrderCode) ? `
-                      <button type="button" onclick="resetGuestInlineTracker()" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+                      <button type="button" onclick="resetGuestInlineTracker()" class="shrink-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">
                         Reset
                       </button>
                     ` : ''}
@@ -11942,9 +11976,9 @@
               `}
 
               <!-- Search & Dropdown Filters -->
-              <div class="flex flex-wrap items-center gap-2">
+              <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                 ${isGuest ? '' : `
-                <div class="relative min-w-[210px] flex-1 sm:flex-initial">
+                <div class="relative col-span-2 sm:col-span-1 min-w-0 sm:min-w-[210px] sm:flex-initial">
                   <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                   <input type="search" id="ord-search-input" value="${escapeHtml(APP_STATE.ordSearchQuery || '')}"
                     oninput="setOrdQueueFilter('search', this.value)"
@@ -11953,22 +11987,22 @@
                 </div>
                 `}
 
-                <select id="ord-filter-type" onchange="setOrdQueueFilter('type', this.value)" aria-label="Filter Jenis Desain" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
-                  <option value="ALL" ${typeF === 'ALL' ? 'selected' : ''}>Semua Jenis Desain</option>
+                <select id="ord-filter-type" onchange="setOrdQueueFilter('type', this.value)" aria-label="Filter Jenis Desain" class="max-sm:w-full min-w-0 py-2 sm:py-1.5 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
+                  <option value="ALL" ${typeF === 'ALL' ? 'selected' : ''}>Semua Jenis</option>
                   <option value="ID_CARD" ${typeF === 'ID_CARD' ? 'selected' : ''}>ID Card Pegawai</option>
                   <option value="BANNER" ${typeF === 'BANNER' ? 'selected' : ''}>Banner Cetak</option>
                 </select>
 
                 ${isGuest ? '' : `
-                <select id="ord-filter-branch" onchange="setOrdQueueFilter('branch', this.value)" aria-label="Filter Cabang" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
+                <select id="ord-filter-branch" onchange="setOrdQueueFilter('branch', this.value)" aria-label="Filter Cabang" class="max-sm:w-full min-w-0 py-2 sm:py-1.5 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
                   <option value="ALL" ${branchF === 'ALL' ? 'selected' : ''}>Semua Cabang</option>
                   ${DB.appSettings.branches.map(b => `<option value="${escapeHtml(b)}" ${branchF === b ? 'selected' : ''}>${escapeHtml(b)}</option>`).join('')}
                 </select>
                 `}
 
-                <select id="ord-sort-order" onchange="setOrdQueueFilter('sort', this.value)" aria-label="Urutkan Tanggal Pengajuan" class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
-                  <option value="newest" ${sortBy === 'newest' ? 'selected' : ''}>Terbaru Diajukan</option>
-                  <option value="oldest" ${sortBy === 'oldest' ? 'selected' : ''}>Terlama Diajukan</option>
+                <select id="ord-sort-order" onchange="setOrdQueueFilter('sort', this.value)" aria-label="Urutkan Tanggal Pengajuan" class="max-sm:w-full min-w-0 py-2 sm:py-1.5 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-medium">
+                  <option value="newest" ${sortBy === 'newest' ? 'selected' : ''}>Terbaru</option>
+                  <option value="oldest" ${sortBy === 'oldest' ? 'selected' : ''}>Terlama</option>
                 </select>
               </div>
             </div>
@@ -17238,12 +17272,16 @@
     // 20. DATABASE BACKUP / RESET & INITIALIZATION
     // =========================================================================
     function exportFullDatabaseJson() {
+      const _bu = getCurrentUser();
+      if (!_bu || _bu.role !== 'MASTER') { showToast('Hanya Master yang berwenang melakukan backup database.', 'error'); return; }
       const jsonStr = JSON.stringify(DB, null, 2);
       triggerDownload(jsonStr, 'BIM_CREATIVE_HUB_Backup_2026.json', 'application/json');
       showToast('Backup penuh database (JSON) berhasil diunduh.', 'success');
     }
 
     function openResetDatabaseModal() {
+      const _ru = getCurrentUser();
+      if (!_ru || _ru.role !== 'MASTER') { showToast('Hanya Master yang berwenang mereset data aplikasi.', 'error'); return; }
       const bodyHtml = `
         <div class="space-y-3 text-xs">
           <p class="text-slate-700 dark:text-slate-200 leading-relaxed">
