@@ -1695,7 +1695,145 @@
     const DELETED_ORDERS_KEY = 'BIM_DELETED_ORDER_IDS_V1';
     const ACTIVE_SESSION_KEY = 'BIM_ACTIVE_SESSION_V1';
 
+    // =========================================================================
+    // Brankas foto (IndexedDB): foto asli pengunggah disimpan UTUH (tanpa resize/kompres)
+    // localStorage hanya menyimpan token 'idb:<kunci>' agar kuota 5 MB tidak jebol.
+    // Di memori & saat sinkron ke Google Drive, foto tetap berupa data URL asli.
+    // =========================================================================
+    const VAULT_DB_NAME = 'BIM_PHOTO_VAULT_V1';
+    const VAULT_STORE = 'photos';
+    const VAULT_MIN_CHARS = 120000;
+    const VAULT_KNOWN = new Set();
+    const VAULT_QUEUE = new Map();
+    let VAULT_AVAILABLE = (typeof indexedDB !== 'undefined');
+    let VAULT_HYDRATED = !VAULT_AVAILABLE;
+    let VAULT_HYDRATE_PROMISE = Promise.resolve();
+    let VAULT_DB_PROMISE = null;
+    let VAULT_FLUSHING = false;
+    let VAULT_SYNC_TIMER = null;
+
+    function vaultOpen() {
+      if (!VAULT_AVAILABLE) return Promise.reject(new Error('IndexedDB tidak tersedia'));
+      if (!VAULT_DB_PROMISE) {
+        VAULT_DB_PROMISE = new Promise((resolve, reject) => {
+          try {
+            const req = indexedDB.open(VAULT_DB_NAME, 1);
+            req.onupgradeneeded = () => { req.result.createObjectStore(VAULT_STORE); };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error || new Error('Gagal membuka IndexedDB'));
+            req.onblocked = () => reject(new Error('IndexedDB terblokir'));
+          } catch (e) { reject(e); }
+        });
+      }
+      return VAULT_DB_PROMISE;
+    }
+    function vaultPut(key, value) {
+      return vaultOpen().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(VAULT_STORE, 'readwrite');
+        tx.objectStore(VAULT_STORE).put(value, key);
+        tx.oncomplete = () => { VAULT_KNOWN.add(key); resolve(true); };
+        tx.onerror = () => reject(tx.error || new Error('Gagal menulis brankas foto'));
+        tx.onabort = () => reject(tx.error || new Error('Penulisan brankas foto dibatalkan'));
+      }));
+    }
+    function vaultGet(key) {
+      return vaultOpen().then(db => new Promise((resolve, reject) => {
+        const req = db.transaction(VAULT_STORE, 'readonly').objectStore(VAULT_STORE).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      }));
+    }
+    function vaultAllKeys() {
+      return vaultOpen().then(db => new Promise((resolve, reject) => {
+        const req = db.transaction(VAULT_STORE, 'readonly').objectStore(VAULT_STORE).getAllKeys();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      }));
+    }
+    // Kunci ringkas dari panjang + cuplikan isi (cepat walau foto berukuran besar)
+    function vaultKeyFor(s) {
+      const n = s.length;
+      let h = 0x811c9dc5;
+      const step = Math.max(1, Math.floor(n / 6000));
+      for (let i = 0; i < n; i += step) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      for (let i = Math.max(0, n - 600); i < n; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      for (let i = 0; i < Math.min(600, n); i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      return 'p' + n.toString(36) + '_' + (h >>> 0).toString(36);
+    }
+    function vaultFlushQueue() {
+      if (VAULT_FLUSHING) return;
+      VAULT_FLUSHING = true;
+      (async () => {
+        let stored = false;
+        try {
+          for (const [key, val] of [...VAULT_QUEUE]) {
+            await vaultPut(key, val);
+            VAULT_QUEUE.delete(key);
+            stored = true;
+          }
+        } catch (e) {
+          console.warn('Brankas foto tidak tersedia, memakai penyimpanan biasa:', e);
+          VAULT_AVAILABLE = false; VAULT_HYDRATED = true; VAULT_QUEUE.clear();
+        }
+        VAULT_FLUSHING = false;
+        if (stored) {
+          clearTimeout(VAULT_SYNC_TIMER);
+          VAULT_SYNC_TIMER = setTimeout(() => { try { saveDatabase(); } catch (_) {} }, 150);
+        }
+      })();
+    }
+    // Serialisasi untuk localStorage: gambar besar diganti token bila sudah aman di brankas
+    function serializeDbForStorage(obj) {
+      if (!VAULT_AVAILABLE) return JSON.stringify(obj);
+      let queued = false;
+      const out = JSON.stringify(obj, function (k, v) {
+        if (typeof v === 'string' && v.length >= VAULT_MIN_CHARS && v.charCodeAt(0) === 100 && v.startsWith('data:image/')) {
+          const key = vaultKeyFor(v);
+          if (VAULT_KNOWN.has(key)) return 'idb:' + key;
+          VAULT_QUEUE.set(key, v);
+          queued = true;
+        }
+        return v;
+      });
+      if (queued) vaultFlushQueue();
+      return out;
+    }
+    // Cadangan pesanan: foto besar dilepas (dipulihkan dari DB utama saat penggabungan)
+    function serializeOrdersBackup(list) {
+      return JSON.stringify(list, function (k, v) {
+        if (k === 'photoDataUrl' && typeof v === 'string' && v.length >= VAULT_MIN_CHARS) return '';
+        return v;
+      });
+    }
+    // Pulihkan token 'idb:' menjadi data URL asli (saat aplikasi dibuka)
+    function vaultHydrateDb() {
+      if (!VAULT_AVAILABLE) { VAULT_HYDRATED = true; return Promise.resolve(); }
+      VAULT_HYDRATE_PROMISE = (async () => {
+        try {
+          const keys = await vaultAllKeys();
+          keys.forEach(k => VAULT_KNOWN.add(String(k)));
+        } catch (e) { VAULT_AVAILABLE = false; VAULT_HYDRATED = true; return; }
+        const targets = [], seen = new Set();
+        (function walk(node) {
+          if (!node || typeof node !== 'object' || seen.has(node)) return;
+          seen.add(node);
+          for (const k of Object.keys(node)) {
+            const v = node[k];
+            if (typeof v === 'string') { if (v.startsWith('idb:')) targets.push([node, k, v.slice(4)]); }
+            else if (v && typeof v === 'object') walk(v);
+          }
+        })(DB);
+        for (const [node, k, key] of targets) {
+          try { const val = await vaultGet(key); node[k] = val || ''; } catch (_) { node[k] = ''; }
+        }
+        VAULT_HYDRATED = true;
+        if (targets.length) { try { renderActiveModule(); } catch (_) {} }
+      })();
+      return VAULT_HYDRATE_PROMISE;
+    }
+
     let DB = loadDatabase();
+    vaultHydrateDb();
     let APP_STATE = {
       currentUserId: 'usr_master',
       activeModule: 'dashboard',
@@ -1865,7 +2003,7 @@
       const deletedSet = getDeletedOrderIdsSet();
       const validOrders = orders.filter(o => o && !deletedSet.has(String(o.id)) && !deletedSet.has(String(o.orderId)));
       try {
-        localStorage.setItem(ORDERS_BACKUP_KEY, JSON.stringify(validOrders));
+        localStorage.setItem(ORDERS_BACKUP_KEY, serializeOrdersBackup(validOrders));
       } catch (_) {
         try {
           const compact = validOrders.map(o => {
@@ -1876,7 +2014,7 @@
             }
             return copy;
           });
-          localStorage.setItem(ORDERS_BACKUP_KEY, JSON.stringify(compact));
+          localStorage.setItem(ORDERS_BACKUP_KEY, serializeOrdersBackup(compact));
         } catch (__) {}
       }
     }
@@ -2183,6 +2321,7 @@
         return false;
       }
       GAS_SYNC_IN_FLIGHT = true;
+      try { if (!VAULT_HYDRATED) await VAULT_HYDRATE_PROMISE; } catch (_) {}
       const statusEl = document.getElementById('footer-storage-status');
       if (statusEl) statusEl.textContent = 'Menyinkronkan ke Google Cloud...';
 
@@ -2228,7 +2367,7 @@
         }
         if (data && data.status === 'ok') {
           DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — Tersinkron ke Google Drive (oleh ${payload.updatedBy})`;
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch (_) {}
+          try { localStorage.setItem(STORAGE_KEY, serializeDbForStorage(DB)); } catch (_) {}
           if (statusEl) {
             const st = getStorageUsageStats();
             statusEl.textContent = `Cloud Sync Aktif (${getNowTimeShort()} • Lokal: ${st.usedKb} KB)`;
@@ -2298,7 +2437,7 @@
           DB.appSettings.gasWebAppUrl = currentUrl;
           DB.appSettings.gasLastSyncStatus = `${getNowWIB()} — Data ditarik dari Google Drive (Update terakhir: ${data.updatedBy || 'Tim'})`;
           saveOrdersBackup(DB.designOrders);
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch (_) {}
+          try { localStorage.setItem(STORAGE_KEY, serializeDbForStorage(DB)); } catch (_) {}
 
           const hasUnsyncedLocalOrder = DB.designOrders.some(o => o && !cloudOrderKeys.has(String(o.orderId || o.id).toUpperCase()));
           if (hasUnsyncedLocalOrder || LAST_LOCAL_WRITE_TS > pullStartTs) {
@@ -2341,7 +2480,7 @@
       }
       saveActiveSessionState();
       try {
-        const serialized = JSON.stringify(DB);
+        const serialized = serializeDbForStorage(DB);
         localStorage.setItem(STORAGE_KEY, serialized);
       } catch (err) {
         console.warn('Storage write warning, compacting media cache:', err);
@@ -2353,7 +2492,7 @@
               }
             });
           }
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+          localStorage.setItem(STORAGE_KEY, serializeDbForStorage(DB));
         } catch (_) {}
       }
       const statusEl = document.getElementById('footer-storage-status');
@@ -12685,6 +12824,58 @@
       }
     }
 
+    // ===== Foto pegawai: pakai ukuran asli, tampilkan info & unduh asli =====
+    function bimReadImageDims(dataUrl) {
+      return new Promise(resolve => {
+        try {
+          const im = new Image();
+          im.onload = () => resolve({ w: im.naturalWidth || im.width || 0, h: im.naturalHeight || im.height || 0 });
+          im.onerror = () => resolve({ w: 0, h: 0 });
+          im.src = dataUrl;
+        } catch (_) { resolve({ w: 0, h: 0 }); }
+      });
+    }
+    function formatBytesHuman(n) {
+      n = Number(n) || 0;
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return Math.round(n / 1024).toLocaleString('id-ID') + ' KB';
+      return (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
+    }
+    function getOrderPhotoDownloadName(ord) {
+      const spec = (ord && ord.idCardSpec) || {};
+      if (spec.photoFileName) return spec.photoFileName;
+      const m = /^data:image\/([a-z0-9.+-]+)/i.exec(spec.photoDataUrl || '');
+      const ext = m ? (m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase()) : 'jpg';
+      return `Foto_${(ord && ord.orderId) || 'pegawai'}.${ext}`;
+    }
+    async function openOrderPhotoLightbox(orderId) {
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      const url = ord && ord.idCardSpec ? ord.idCardSpec.photoDataUrl : '';
+      if (!url) { showToast('Foto pegawai tidak tersedia.', 'error'); return; }
+      let shown = url;
+      try { shown = URL.createObjectURL(await (await fetch(url)).blob()); } catch (_) {}
+      openLightbox(`Foto Pegawai — ${ord.idCardSpec.fullName || ord.requesterName} (${ord.orderId})`, shown);
+      const dl = document.getElementById('lightbox-download-link');
+      if (dl) dl.setAttribute('download', getOrderPhotoDownloadName(ord));
+    }
+    async function downloadOrderPhotoOriginal(orderId) {
+      const ord = DB.designOrders.find(o => o.id === orderId);
+      const url = ord && ord.idCardSpec ? ord.idCardSpec.photoDataUrl : '';
+      if (!url) { showToast('Foto pegawai tidak tersedia.', 'error'); return; }
+      try {
+        const blobUrl = URL.createObjectURL(await (await fetch(url)).blob());
+        const a = document.createElement('a');
+        a.href = blobUrl; a.download = getOrderPhotoDownloadName(ord);
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+        showToast('Foto asli sedang diunduh.', 'success');
+      } catch (_) {
+        const a = document.createElement('a');
+        a.href = url; a.download = getOrderPhotoDownloadName(ord);
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+    }
+
     function handleIdCardPhotoUpload(inputEl) {
       const file = inputEl.files && inputEl.files[0];
       if (!file) return;
@@ -12730,14 +12921,16 @@
           msgEl.textContent = `Tervalidasi: ${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`;
           msgEl.className = 'text-[11px] font-bold text-emerald-600 dark:text-emerald-400';
         }
-        compressUploadedImageDataUrl(rawDataUrl, 720, 0.80, function(compressedUrl) {
-          if (compressedUrl) {
-            APP_STATE.ordIdCardPhotoTemp = compressedUrl;
-            const prevEl = document.getElementById('idc-preview-img');
-            if (prevEl) prevEl.src = compressedUrl;
+        // Foto dipakai APA ADANYA (tanpa resize/kompres); salinan asli diamankan ke brankas foto
+        APP_STATE.ordIdCardPhotoMeta = { name: file.name, size: file.size, type: file.type, width: 0, height: 0 };
+        bimReadImageDims(rawDataUrl).then(function(d) {
+          if (APP_STATE.ordIdCardPhotoMeta) { APP_STATE.ordIdCardPhotoMeta.width = d.w; APP_STATE.ordIdCardPhotoMeta.height = d.h; }
+          if (msgEl && d.w) {
+            msgEl.textContent = `Tervalidasi: ${file.name} • ${d.w}×${d.h} px • ${formatBytesHuman(file.size)} (ukuran asli)`;
           }
         });
-        showToast('Foto pegawai berhasil divalidasi dan dimuat ke pratinjau.', 'success');
+        try { vaultPut(vaultKeyFor(rawDataUrl), rawDataUrl).catch(function() {}); } catch (_) {}
+        showToast('Foto pegawai dimuat dengan ukuran asli.', 'success');
       };
       reader.readAsDataURL(file);
       return true;
@@ -12747,6 +12940,7 @@
       APP_STATE.ordIdCardPhotoTemp = '';
       APP_STATE.ordIdCardPhotoValidated = false;
       APP_STATE.ordIdCardPhotoName = '';
+      APP_STATE.ordIdCardPhotoMeta = null;
       renderDesignOrder();
       showToast('Foto pegawai dihapus dari form.', 'info');
     }
@@ -12847,6 +13041,10 @@
           branch: cleanBranch,
           specialNotes: notes,
           photoDataUrl: uploadedPhoto,
+          photoFileName: uploadedPhoto && APP_STATE.ordIdCardPhotoMeta ? APP_STATE.ordIdCardPhotoMeta.name : '',
+          photoFileSize: uploadedPhoto && APP_STATE.ordIdCardPhotoMeta ? APP_STATE.ordIdCardPhotoMeta.size : 0,
+          photoWidth: uploadedPhoto && APP_STATE.ordIdCardPhotoMeta ? APP_STATE.ordIdCardPhotoMeta.width : 0,
+          photoHeight: uploadedPhoto && APP_STATE.ordIdCardPhotoMeta ? APP_STATE.ordIdCardPhotoMeta.height : 0,
           photoValidated: Boolean(APP_STATE.ordIdCardPhotoValidated)
         },
         bannerSpec: null,
@@ -12874,6 +13072,7 @@
       APP_STATE.ordIdCardPhotoTemp = '';
       APP_STATE.ordIdCardPhotoValidated = false;
       APP_STATE.ordIdCardPhotoName = '';
+      APP_STATE.ordIdCardPhotoMeta = null;
       APP_STATE.ordSelectedOrderId = newOrder.id;
       APP_STATE.ordActiveTab = 'queue';
       APP_STATE.ordFilterType = 'ALL';
@@ -13288,6 +13487,8 @@
       const notes = isIdCard && ord.idCardSpec ? (ord.idCardSpec.specialNotes || 'Tidak ada catatan tambahan.') : (ord.bannerSpec ? ord.bannerSpec.bodyInfo : '-');
       const uploadedPhoto = isIdCard && ord.idCardSpec && ord.idCardSpec.photoDataUrl ? ord.idCardSpec.photoDataUrl : '';
       const hasFinalFile = Boolean(ord.finalFileUrl && String(ord.finalFileUrl).trim() !== '');
+      const photoSpec = (isIdCard && ord.idCardSpec) || {};
+      const photoInfo = [photoSpec.photoFileName, (photoSpec.photoWidth && photoSpec.photoHeight) ? `${photoSpec.photoWidth}×${photoSpec.photoHeight} px` : '', photoSpec.photoFileSize ? formatBytesHuman(photoSpec.photoFileSize) : ''].filter(Boolean).join(' • ');
 
       const bodyHtml = `
         <div class="space-y-5 text-xs">
@@ -13430,12 +13631,19 @@
                     ${uploadedPhoto ? `<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">Tersedia</span>` : `<span class="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-500 text-[10px]">Tidak Ada</span>`}
                   </div>
                   ${uploadedPhoto ? `
-                    <div class="bg-slate-950 rounded-xl p-3 flex flex-col items-center gap-2.5">
-                      <img src="${uploadedPhoto}" alt="Foto ${escapeHtml(personName)}" class="max-h-44 rounded-lg object-contain border border-slate-800" />
-                      <button type="button" onclick="openLightbox('Foto Pegawai — ${escapeHtml(personName)} (${escapeHtml(ord.orderId)})', '${uploadedPhoto}')" class="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition">
-                        <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-[#F4B942]"></i>
-                        <span>Buka Foto Ukuran Penuh</span>
-                      </button>
+                    <div class="bg-gradient-to-br from-emerald-50 via-white to-amber-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex flex-col items-center gap-2.5">
+                      <img src="${uploadedPhoto}" alt="Foto ${escapeHtml(personName)}" class="max-h-56 max-w-full rounded-lg object-contain border border-slate-200 dark:border-slate-700 bg-white" />
+                      ${photoInfo ? `<div class="text-[10px] text-slate-500 dark:text-slate-400 text-center break-all">Foto asli: ${escapeHtml(photoInfo)}</div>` : ''}
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                        <button type="button" onclick="openOrderPhotoLightbox('${ord.id}')" class="py-2 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-[11px] font-bold flex items-center justify-center gap-1.5 transition">
+                          <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-[#16A34A]"></i>
+                          <span>Buka Ukuran Penuh</span>
+                        </button>
+                        <button type="button" onclick="downloadOrderPhotoOriginal('${ord.id}')" class="py-2 px-3 rounded-xl bg-[#14532D] hover:bg-[#16A34A] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition">
+                          <i data-lucide="download" class="w-3.5 h-3.5 text-[#F4B942]"></i>
+                          <span>Unduh Foto Asli</span>
+                        </button>
+                      </div>
                     </div>
                   ` : `
                     <div class="p-5 rounded-xl bg-slate-50 dark:bg-slate-900 text-center text-slate-400 text-[11px]">
@@ -13515,17 +13723,19 @@
       const f = inputEl && inputEl.files && inputEl.files[0];
       if (!f) return;
       const reader = new FileReader();
-      reader.onload = async function(evt) {
-        let dataUrl = evt.target.result;
-        if (typeof compressImageDataUrl === 'function') {
-          try { dataUrl = await compressImageDataUrl(dataUrl, 900, 0.85); } catch (e) {}
-        }
+      reader.onload = function(evt) {
+        const dataUrl = evt.target.result;   // ukuran asli, tanpa kompres
         APP_STATE.editOrderTempPhoto = dataUrl;
+        APP_STATE.editOrderTempPhotoMeta = { name: f.name, size: f.size, type: f.type, width: 0, height: 0 };
+        bimReadImageDims(dataUrl).then(function(d) {
+          if (APP_STATE.editOrderTempPhotoMeta) { APP_STATE.editOrderTempPhotoMeta.width = d.w; APP_STATE.editOrderTempPhotoMeta.height = d.h; }
+        });
+        try { vaultPut(vaultKeyFor(dataUrl), dataUrl).catch(function() {}); } catch (_) {}
         const prevImg = document.getElementById('edit-ord-photo-preview');
         const prevWrap = document.getElementById('edit-ord-photo-wrap');
         if (prevImg) prevImg.src = dataUrl;
         if (prevWrap) prevWrap.classList.remove('hidden');
-        showToast('Foto baru siap disimpan.', 'info');
+        showToast('Foto baru siap disimpan (ukuran asli).', 'info');
       };
       reader.readAsDataURL(f);
     }
@@ -13540,6 +13750,7 @@
 
       const isIdCard = ord.orderType === 'ID_CARD';
       APP_STATE.editOrderTempPhoto = isIdCard && ord.idCardSpec ? (ord.idCardSpec.photoDataUrl || '') : '';
+      APP_STATE.editOrderTempPhotoMeta = null;
 
       let formHtml = '';
       if (isIdCard) {
@@ -13754,7 +13965,13 @@
           jobTitle,
           branch,
           specialNotes: notes || 'Desain ID Card Standar Korporat BIM',
-          photoDataUrl: APP_STATE.editOrderTempPhoto || (ord.idCardSpec && ord.idCardSpec.photoDataUrl) || ''
+          photoDataUrl: APP_STATE.editOrderTempPhoto || (ord.idCardSpec && ord.idCardSpec.photoDataUrl) || '',
+          ...(APP_STATE.editOrderTempPhoto && APP_STATE.editOrderTempPhotoMeta ? {
+            photoFileName: APP_STATE.editOrderTempPhotoMeta.name,
+            photoFileSize: APP_STATE.editOrderTempPhotoMeta.size,
+            photoWidth: APP_STATE.editOrderTempPhotoMeta.width,
+            photoHeight: APP_STATE.editOrderTempPhotoMeta.height
+          } : {})
         };
       } else {
         const reqName = (document.getElementById('edit-bnr-reqname')?.value || '').trim();
