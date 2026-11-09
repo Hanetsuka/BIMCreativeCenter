@@ -12701,7 +12701,7 @@
               <!-- Bagian 2: Foto Pegawai (wajib untuk Tamu) & Catatan Tambahan -->
               <div class="bim-form-section space-y-3.5">
                 <div class="flex items-center justify-between border-b border-slate-200/70 dark:border-slate-800 pb-2.5">
-                  <span class="font-extrabold text-slate-900 dark:text-white text-xs">${photoRequired ? '5. Foto Pegawai <span class="text-red-500">*</span> &amp; Catatan' : 'Foto Pegawai &amp; Catatan (Opsional)'}</span>
+                  <span class="font-extrabold text-slate-900 dark:text-white text-xs">${photoRequired ? '5. Foto Pegawai <span class="text-red-500">*</span>' : 'Foto Pegawai (Opsional)'}</span>
                   <span id="idc-photo-validation-msg" class="text-[11px] font-semibold ${hasUploadedCustomPhoto ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}">
                     ${hasUploadedCustomPhoto ? `Foto Tervalidasi (${escapeHtml(APP_STATE.ordIdCardPhotoName)})` : (photoRequired ? 'Wajib • JPG, PNG, WEBP maks. 5 MB' : 'JPG, PNG, WEBP maks. 5 MB')}
                   </span>
